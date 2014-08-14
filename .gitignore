@@ -1,4 +1,4 @@
 *.o
 libwiringPiDev.so.2.0
 libwiringPi.so.2.0
-/test
+/test/
