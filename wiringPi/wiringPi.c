@@ -932,7 +932,7 @@ void sunxi_digitalWrite(int pin, int value)
 	 {
 		printf("pin number error\n");
 	 }
-	delay (1) ;	 
+	 
 	 return ;
 }
 int sunxi_digitalRead(int pin)
