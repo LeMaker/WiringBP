@@ -895,7 +895,7 @@ void sunxi_set_gpio_mode(int pin,int mode)
 	 {
 		printf("line:%dpin number error\n",__LINE__);
 	 }
-	delay (1) ;
+
 	return ;
 }
 void sunxi_digitalWrite(int pin, int value)
