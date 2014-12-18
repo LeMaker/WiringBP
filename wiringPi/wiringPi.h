@@ -43,10 +43,14 @@
 #define	PWM_OUTPUT		 2
 #define	GPIO_CLOCK		 3
 #define	SOFT_PWM_OUTPUT		 4
+#define	SOFT_TONE_OUTPUT	 5
+#define	PWM_TONE_OUTPUT		 6
 
+/*add for BananaPro by LeMaker team*/
 #define	PULLUP		 	5
 #define	PULLDOWN		7
 #define	PULLOFF			7
+/*end 2014.09.18*/
 
 #define	LOW			 0
 #define	HIGH			 1
@@ -68,6 +72,37 @@
 #define	INT_EDGE_FALLING	1
 #define	INT_EDGE_RISING		2
 #define	INT_EDGE_BOTH		3
+
+// Pi model types and version numbers
+//	Intended for the GPIO program Use at your own risk.
+
+#define	PI_MODEL_UNKNOWN	0
+#define	PI_MODEL_A		1
+#define	PI_MODEL_B		2
+#define	PI_MODEL_BP		3
+#define	PI_MODEL_CM		4
+#define   PI_MODEL_BPR   5 //add for BananaPro by LeMaker team
+
+#define	PI_VERSION_UNKNOWN	0
+#define	PI_VERSION_1		1
+#define	PI_VERSION_1_1		2
+#define	PI_VERSION_1_2		3
+#define	PI_VERSION_2		4
+
+#define	PI_MAKER_UNKNOWN	0
+#define	PI_MAKER_EGOMAN		1
+#define	PI_MAKER_SONY		2
+#define	PI_MAKER_QISDA		3
+#define   PI_MAKER_LEMAKER  4  //add for BananaPro by LeMaker team
+
+#define BPRVER 3  //add for BananaPro by lemaker team
+
+extern const char *piModelNames    [6] ;
+extern const char *piRevisionNames [5] ;
+extern const char *piMakerNames    [5] ;
+
+
+//	Intended for the GPIO program Use at your own risk.
 
 // Threads
 
@@ -120,6 +155,11 @@ extern struct wiringPiNodeStruct *wiringPiNodes ;
 extern "C" {
 #endif
 
+// Data
+
+//extern const char *piModelNames [] ;
+//extern const char *piRevisionNames[] ;
+
 // Internal
 
 extern int wiringPiFailure (int fatal, const char *message, ...) ;
@@ -152,10 +192,13 @@ extern int  wiringPiSetupPiFaceForGpioProg (void) ;	// Don't use this - for gpio
 // On-Board Raspberry Pi hardware specific stuff
 
 extern int  piBoardRev          (void) ;
+extern void piBoardId           (int *model, int *rev, int *mem, int *maker, int *overVolted) ;
 extern int  wpiPinToGpio        (int wpiPin) ;
 extern int  physPinToGpio       (int physPin) ;
+extern int  physPinToPin         (int physPin); //add by LeMaker team for Bananapi
 extern void setPadDrive         (int group, int value) ;
 extern int  getAlt              (int pin) ;
+extern void pwmToneWrite        (int pin, int freq) ;
 extern void digitalWriteByte    (int value) ;
 extern void pwmSetMode          (int mode) ;
 extern void pwmSetRange         (unsigned int range) ;

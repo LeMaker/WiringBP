@@ -37,6 +37,11 @@
 
 extern int wpMode ;
 
+#ifndef TRUE
+#  define       TRUE    (1==1)
+#  define       FALSE   (1==2)
+#endif
+
 /*
  * doReadallExternal:
  *	A relatively crude way to read the pins on an external device.
@@ -70,33 +75,10 @@ static void doReadallExternal (void)
  *********************************************************************************
  */
 
-static char *pinNames [] =
-{
-  "GPIO 0", "GPIO 1", "GPIO 2", "GPIO 3", "GPIO 4", "GPIO 5", "GPIO 6", "GPIO 7",
-  "SDA   ", "SCL   ",
-  "CE0   ", "CE1   ", "MOSI  ", "MISO  ", "SCLK  ",
-  "TxD   ", "RxD   ",
-  "GPIO 8", "GPIO 9", "GPIO10", "GPIO11",
-} ;
-
 static char *alts [] =
 {
   "IN", "OUT", "ALT5", "ALT4", "ALT0", "ALT1", "ALT2", "ALT3"
 } ;
-
-static int wpiToPhys [64] =
-{
-  11, 12, 13, 15, 16, 18, 22,  7,	//  0...7
-   3,  5,				//  8...9
-  24, 26, 19, 21, 23,			// 10..14
-   8, 10,				// 15..16
-   3,  4,  5,  6,			// 17..20
-             0,0,0,0,0,0,0,0,0,0,0,	// 20..31
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,	// 32..47
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,	// 47..63
-} ;
-
-// The other mappings needed are in wiringPi.c
 
 static int physToWpi [64] = 
 {
@@ -114,60 +96,78 @@ static int physToWpi [64] =
   13,  6,
   14, 10,
   -1, 11,       // 25, 26
-
-// Padding:
-
-                                              -1, -1, -1, -1, -1,       // ... 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,       // ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,       // ... 63
+  30, 31,	// Actually I2C, but not used
+  21, -1,
+  22, 26,
+  23, -1,
+  24, 27,
+  25, 28,
+  -1, 29,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1
 } ;
 
 static char *physNames [64] = 
 {
   NULL,
 
-  "3.3v",  "5v",
-  "SDA",   "5V",
-  "SCL",   "0v",
-  "GPIO7", "TxD",
-  "0v",    "RxD",
-  "GPIO0", "GPIO1",
-  "GPIO2", "0v",
-  "GPIO3", "GPIO4",
-  "3.3v",  "GPIO5",
-  "MOSI",  "0v",
-  "MISO",  "GPIO6",
-  "SCLK",  "CE0",
-  "0v",    "CE1",
-
-                                                         NULL,NULL,NULL,NULL,NULL,
-  NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
-  NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+  "   3.3v", "5v     ",
+  "  SDA.1", "5V     ",
+  "  SCL.1", "0v     ",
+  "GPIO. 7", "TxD    ",
+  "     0v", "RxD    ",
+  "GPIO. 0", "GPIO. 1",
+  "GPIO. 2", "0v     ",
+  "GPIO. 3", "GPIO. 4",
+  "   3.3v", "GPIO. 5",
+  "   MOSI", "0v     ",
+  "   MISO", "GPIO. 6",
+  "   SCLK", "CE0    ",
+  "     0v", "CE1    ",
+  "  SDA.0", "SCL.0  ",
+  "GPIO.21", "0v     ",
+  "GPIO.22", "GPIO.26",
+  "GPIO.23", "0v     ",
+  "GPIO.24", "GPIO.27",
+  "GPIO.25", "GPIO.28",
+  "     0v", "GPIO.29",
+       NULL, NULL,
+       NULL, NULL,
+       NULL, NULL,
+       NULL, NULL,
+       NULL, NULL,
+  "GPIO.17", "GPIO.18",
+  "GPIO.19", "GPIO.20",
+   NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
 } ;
+
+
+/*
+ * readallPhys:
+ *	Given a physical pin output the data on it and the next pin:
+ *| BCM | wPi |   Name  | Mode | Val| Physical |Val | Mode | Name    | wPi | BCM |
+ *********************************************************************************
+ */
 
 static void readallPhys (int physPin)
 {
   int pin ;
 
-  /**/ if (wpMode == WPI_MODE_GPIO)
-  {
-    if (physPinToGpio (physPin) == -1)
-      printf (" |    ") ;
-    else
-      printf (" | %3d", physPinToGpio (physPin)) ;
-  }
-  else if (wpMode != WPI_MODE_PHYS)
-  {
-    if (physToWpi     [physPin] == -1)
-      printf (" |    ") ;
-    else
-      printf (" | %3d", physToWpi     [physPin]) ;
-  }
+  if (physPinToGpio (physPin) == -1)
+    printf (" |     |    ") ;
+  else
+    printf (" | %3d | %3d", physPinToGpio (physPin), physToWpi [physPin]) ;
 
-  printf (" | %5s", physNames [physPin]) ;
+  printf (" | %s", physNames [physPin]) ;
 
   if (physToWpi [physPin] == -1)
-    printf (" |      |   ") ;
+    printf (" |      |  ") ;
   else
   {
     /**/ if (wpMode == WPI_MODE_GPIO)
@@ -178,7 +178,7 @@ static void readallPhys (int physPin)
       pin = physToWpi [physPin] ;
 
     printf (" | %4s", alts [getAlt (pin)]) ;
-    printf (" | %s", (digitalRead (pin) == LOW) ? "Lo" : "Hi") ;
+    printf (" | %d", digitalRead (pin)) ;
   }
 
 // Pin numbers:
@@ -190,7 +190,7 @@ static void readallPhys (int physPin)
 // Same, reversed
 
   if (physToWpi [physPin] == -1)
-    printf (" |    |     ") ;
+    printf (" |   |     ") ;
   else
   {
     /**/ if (wpMode == WPI_MODE_GPIO)
@@ -200,74 +200,122 @@ static void readallPhys (int physPin)
     else
       pin = physToWpi [physPin] ;
 
-    printf (" | %s", (digitalRead (pin) == LOW) ? "Lo" : "Hi") ;
+    printf (" | %d", digitalRead (pin)) ;
     printf (" | %-4s", alts [getAlt (pin)]) ;
   }
 
   printf (" | %-5s", physNames [physPin]) ;
 
-  /**/ if (wpMode == WPI_MODE_GPIO)
-  {
-    if (physPinToGpio (physPin) == -1)
-      printf (" |    ") ;
-    else
-      printf (" | %-3d", physPinToGpio (physPin)) ;
-  }
-  else if (wpMode != WPI_MODE_PHYS)
-  {
-    if (physToWpi     [physPin] == -1)
-      printf (" |    ") ;
-    else
-      printf (" | %-3d", physToWpi     [physPin]) ;
-  }
+  if (physToWpi     [physPin] == -1)
+    printf (" |     |    ") ;
+  else
+    printf (" | %-3d | %-3d", physToWpi [physPin], physPinToGpio (physPin)) ;
 
   printf (" |\n") ;
 }
 
 
-void doReadall (void)
+void cmReadall (void)
 {
   int pin ;
 
-  if (wiringPiNodes != NULL)	// External readall
+  printf ("+-----+------+-------+      +-----+------+-------+\n") ;
+  printf ("| Pin | Mode | Value |      | Pin | Mode | Value |\n") ;
+  printf ("+-----+------+-------+      +-----+------+-------+\n") ;
+
+  for (pin = 0 ; pin < 28 ; ++pin)
   {
-    doReadallExternal () ;
-    return ;
+    printf ("| %3d ", pin) ;
+    printf ("| %-4s ", alts [getAlt (pin)]) ;
+    printf ("| %s  ", digitalRead (pin) == HIGH ? "High" : "Low ") ;
+    printf ("|      ") ;
+    printf ("| %3d ", pin + 28) ;
+    printf ("| %-4s ", alts [getAlt (pin + 28)]) ;
+    printf ("| %s  ", digitalRead (pin + 28) == HIGH ? "High" : "Low ") ;
+    printf ("|\n") ;
   }
 
-  /**/ if (wpMode == WPI_MODE_GPIO)
-  {
-    printf (" +-----+-------+------+----+-Rev%d-----+----+------+-------+-----+\n", piBoardRev ()) ;
-    printf (" | BCM |  Name | Mode | Val| Physical |Val | Mode | Name  | BCM |\n") ;
-    printf (" +-----+-------+------+----+----++----+----+------+-------+-----+\n") ;
-    for (pin = 1 ; pin <= 26 ; pin += 2)
-      readallPhys (pin) ;
-    printf (" +-----+-------+------+----+----++----+----+------+-------+-----+\n") ;
-  }
-  else if (wpMode == WPI_MODE_PHYS)
-  {
-    printf (" +-------+------+----+-Rev%d-----+----+------+-------+\n", piBoardRev ()) ;
-    printf (" |  Name | Mode | Val| Physical |Val | Mode | Name  |\n") ;
-    printf (" +-------+------+----+----++----+----+------+-------+\n") ;
-    for (pin = 1 ; pin <= 26 ; pin += 2)
-      readallPhys (pin) ;
-    printf (" +-------+------+----+----++----+----+------+-------+\n") ;
-  }
-  else	// wiringPi
-  {
-    printf (" +-----+-------+------+----+-Rev%d-----+----+------+-------+-----+\n", piBoardRev ()) ;
-    printf (" | wPi |  Name | Mode | Val| Physical |Val | Mode | Name  | wPi |\n") ;
-    printf (" +-----+-------+------+----+----++----+----+------+-------+-----+\n") ;
-    for (pin = 1 ; pin <= 26 ; pin += 2)
-      readallPhys (pin) ;
-    printf (" +-----+-------+------+----+----++----+----+------+-------+-----+\n") ;
-  }
+  printf ("+-----+------+-------+      +-----+------+-------+\n") ;
 }
 
 
-void doReadallOld (void)
+/*
+ * abReadall:
+ *	Read all the pins on the model A or B.
+ *********************************************************************************
+ */
+
+void abReadall (int model, int rev)
 {
   int pin ;
+  char *type ;
+
+  if (model == PI_MODEL_A)
+    type = " A" ;
+  else
+    if (rev == PI_VERSION_2)
+      type = "B2" ;
+    else
+      type = "B1" ;
+
+  printf (" +-----+-----+---------+------+---+-Model %s-+---+------+---------+-----+-----+\n", type) ;
+  printf (" | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |\n") ;
+  printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+  for (pin = 1 ; pin <= 26 ; pin += 2)
+    readallPhys (pin) ;
+
+  if (rev == PI_VERSION_2) // B version 2
+  {
+    printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+    for (pin = 51 ; pin <= 54 ; pin += 2)
+      readallPhys (pin) ;
+  }
+
+  printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+  printf (" | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |\n") ;
+  printf (" +-----+-----+---------+------+---+-Model %s-+---+------+---------+-----+-----+\n", type) ;
+}
+
+
+/*
+ * bPlusReadall:
+ *	Read all the pins on the model B+
+ *********************************************************************************
+ */
+
+void bPlusReadall (void)
+{
+  int pin ;
+
+  printf (" +-----+-----+---------+------+---+--B Plus--+---+------+---------+-----+-----+\n") ;
+  printf (" | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |\n") ;
+  printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+  for (pin = 1 ; pin <= 40 ; pin += 2)
+    readallPhys (pin) ;
+  printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+  printf (" | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |\n") ;
+  printf (" +-----+-----+---------+------+---+--B Plus--+---+------+---------+-----+-----+\n") ;
+}
+
+//add for BananaPro by lemaker team
+void BPReadAll(void)
+{
+  int pin ;
+
+  printf (" +-----+-----+---------+------+---+--Banana Pro--+---+------+---------+-----+-----+\n") ;
+  printf (" | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |\n") ;
+  printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+  for (pin = 1 ; pin <= 40 ; pin += 2)
+    readallPhys (pin) ;
+  printf (" +-----+-----+---------+------+---+----++----+---+------+---------+-----+-----+\n") ;
+  printf (" | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |\n") ;
+  printf (" +-----+-----+---------+------+---+--Banana Pro--+---+------+---------+-----+-----+\n") ;	
+}
+//end 2014.09.26
+
+void doReadall (void)
+{
+  int model, rev, mem, maker, overVolted ;
 
   if (wiringPiNodes != NULL)	// External readall
   {
@@ -275,21 +323,16 @@ void doReadallOld (void)
     return ;
   }
 
-  printf ("+----------+-Rev%d-+------+--------+------+-------+\n", piBoardRev ()) ;
-  printf ("| wiringPi | GPIO | Phys | Name   | Mode | Value |\n") ;
-  printf ("+----------+------+------+--------+------+-------+\n") ;
+  piBoardId (&model, &rev, &mem, &maker, &overVolted) ;
 
-  for (pin = 0 ; pin < 64 ; ++pin)	// Crude, but effective
-  {
-    if (wpiPinToGpio (pin) == -1)
-      continue ;
-
-    printf ("| %6d   | %3d  | %3d  | %s | %-4s | %-4s  |\n",
-	pin, wpiPinToGpio (pin), wpiToPhys [pin],
-	pinNames [pin], 
-	alts [getAlt (pin)], 
-	digitalRead (pin) == HIGH ? "High" : "Low ") ;
-  }
-
-  printf ("+----------+------+------+--------+------+-------+\n") ;
+  /**/ if ((model == PI_MODEL_A) || (model == PI_MODEL_B))
+    abReadall (model, rev) ;
+  else if (model == PI_MODEL_BP) 
+    bPlusReadall () ;
+  else if (model == PI_MODEL_CM)
+    cmReadall () ;
+  else if (model == PI_MODEL_BPR) //add for BananaPro by lemaker team
+  	 BPReadAll();
+  else
+    printf ("Oops - unable to determine board type... model: %d\n", model) ;
 }

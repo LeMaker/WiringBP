@@ -207,7 +207,7 @@ int main (int argc, char *argv[])
   if (bits == 4)
     lcdHandle = lcdInit (rows, cols, 4, 11,10, 4,5,6,7,0,0,0,0) ;
   else
-    lcdHandle = lcdInit (rows, cols, 8, 11,10, 0,1,2,3,4,5,6,7) ;
+    lcdHandle = lcdInit (rows, cols, 8, 11, 10, 0,1,2,3,4,5,6,7) ;
 
   if (lcdHandle < 0)
   {

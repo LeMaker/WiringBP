@@ -2,12 +2,6 @@
 Just a quick note to some people who've provided help, suggestions,
 bug-fixes, etc. along the way...
 
-Zhengfeng Xiao:(LeMaker)
-  Modified wiringPi to work on Banana Pi
-
-Will Xiao:(LeMaker)
-  Help test on Banana Pi. Write some test programs.
-
 Nick Lott: (And others)
   Hints about making it work with C++
 
@@ -37,3 +31,12 @@ Andre Crone
 
 Rik Teerling
   Pointing out some silly mistooks in the I2C code...
+
+Xiao Zhengfeng
+  Porting wiringPi for Banana Pi.
+
+Will Xiao
+  Testing on Banana Pro/Pi.
+
+Peter Chen
+  Porting wiringPi for Banana Pro.

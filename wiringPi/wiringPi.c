@@ -1,6 +1,6 @@
 /*
  * wiringPi:
- *	Arduino compatable (ish) Wiring library for the Banana Pi
+ *	Arduino compatable (ish) Wiring library for the Raspberry Pi
  *	Copyright (c) 2012 Gordon Henderson
  *	Additional code for pwmSetClock by Chris Hall <chris@kchall.plus.com>
  *
@@ -9,7 +9,7 @@
  *	the clock section /grr/mutter/
  ***********************************************************************
  * This file is part of wiringPi:
- *	http://www.lemaker.org/
+ *	https://projects.drogon.net/raspberry-pi/wiringpi/
  *
  *    wiringPi is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU Lesser General Public License as
@@ -52,8 +52,6 @@
 //		Change maxPins to numPins to more accurately reflect purpose
 
 
-//12 May 2014:
-//modify for the bananaPi of the A20 ARM Peripherals
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -72,8 +70,10 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 
-#include "wiringPi.h"
+#include "softPwm.h"
+#include "softTone.h"
 
+#include "wiringPi.h"
 
 #ifndef	TRUE
 #define	TRUE	(1==1)
@@ -86,7 +86,7 @@
 #define	ENV_CODES	"WIRINGPI_CODES"
 
 
-// Mask for the bottom 64 pins which belong to the Banana Pi
+// Mask for the bottom 64 pins which belong to the Banana Pro
 //	The others are available for the other devices
 
 #define	PI_GPIO_MASK	(0xFFFFFFC0)
@@ -197,6 +197,88 @@ static volatile uint32_t *timer ;
 static volatile uint32_t *timerIrqRaw ;
 #endif
 
+/*add for BananaPro by LeMaker team*/
+// for mmap BananaPro 
+#define	MAX_PIN_NUM		(0x40)  //64
+#define SUNXI_GPIO_BASE (0x01C20800)
+#define MAP_SIZE	(4096*2)
+#define MAP_MASK	(MAP_SIZE - 1)
+//sunxi_pwm
+#define SUNXI_PWM_BASE (0x01c20e00)
+#define SUNXI_PWM_CTRL_REG  (SUNXI_PWM_BASE)
+#define SUNXI_PWM_CH0_PERIOD  (SUNXI_PWM_BASE + 0x4)
+#define SUNXI_PWM_CH1_PERIOD  (SUNXI_PWM_BASE + 0x8)
+
+#define SUNXI_PWM_CH0_EN			(1 << 4)
+#define SUNXI_PWM_CH0_ACT_STA		(1 << 5)
+#define SUNXI_PWM_SCLK_CH0_GATING	(1 << 6)
+#define SUNXI_PWM_CH0_MS_MODE		(1 << 7) //pulse mode
+#define SUNXI_PWM_CH0_PUL_START		(1 << 8)
+
+#define SUNXI_PWM_CH1_EN			(1 << 19)
+#define SUNXI_PWM_CH1_ACT_STA		(1 << 20)
+#define SUNXI_PWM_SCLK_CH1_GATING	(1 << 21)
+#define SUNXI_PWM_CH1_MS_MODE		(1 << 22) //pulse mode
+#define SUNXI_PWM_CH1_PUL_START		(1 << 23)
+
+
+#define PWM_CLK_DIV_120 	        0
+#define PWM_CLK_DIV_180		1
+#define PWM_CLK_DIV_240		2
+#define PWM_CLK_DIV_360		3
+#define PWM_CLK_DIV_480		4
+#define PWM_CLK_DIV_12K		8
+#define PWM_CLK_DIV_24K		9
+#define PWM_CLK_DIV_36K		10
+#define PWM_CLK_DIV_48K		11
+#define PWM_CLK_DIV_72K		12
+
+#define GPIO_PADS_BP		(0x00100000)
+#define CLOCK_BASE_BP		(0x00101000)
+//	addr should 4K*n
+//	#define GPIO_BASE_BP		(SUNXI_GPIO_BASE)
+#define GPIO_BASE_BP		(0x01C20000)
+#define GPIO_TIMER_BP		(0x0000B000)
+#define GPIO_PWM_BP		(0x01c20000)  //need 4k*n
+
+static int wiringPinMode = WPI_MODE_UNINITIALISED ;
+int wiringPiCodes = FALSE ;
+/*end 2014.09.18*/
+
+// Data for use with the boardId functions.
+//	The order of entries here to correspond with the PI_MODEL_X
+//	and PI_VERSION_X defines in wiringPi.h
+//	Only intended for the gpio command - use at your own risk!
+
+const char *piModelNames [6] =
+{
+  "Unknown",
+  "Model A",
+  "Model B",
+  "Model B+",
+  "Compute Module",
+  "Banana Pro",    //add for BananaPro by LeMaker team
+} ;
+
+const char *piRevisionNames [5] =
+{
+  "Unknown",
+  "1",
+  "1.1",
+  "1.2",
+  "2",
+} ;
+
+const char *piMakerNames [5] =
+{
+  "Unknown",
+  "Egoman",
+  "Sony",
+  "Qusda",
+  "LeMaker", //add for BananaPro by LeMaker team
+} ;
+
+
 // Time for easy calculations
 
 static uint64_t epochMilli, epochMicro ;
@@ -234,14 +316,16 @@ static void (*isrFunctions [64])(void) ;
 
 // pinToGpio:
 //	Take a Wiring pin (0 through X) and re-map it to the BCM_GPIO pin
-//	Cope for 2 different board revisions here.
+//	Cope for 3 different board revisions here.
 
 static int *pinToGpio ;
+
+// Revision 1, 1.1:
 
 static int pinToGpioR1 [64] =
 {
   17, 18, 21, 22, 23, 24, 25, 4,	// From the Original Wiki - GPIO 0 through 7:	wpi  0 -  7
-   0,  1,				// I2C  - SDA0, SCL0				wpi  8 -  9
+   0,  1,				// I2C  - SDA1, SCL1				wpi  8 -  9
    8,  7,				// SPI  - CE1, CE0				wpi 10 - 11
   10,  9, 11, 				// SPI  - MOSI, MISO, SCLK			wpi 12 - 14
   14, 15,				// UART - Tx, Rx				wpi 15 - 16
@@ -253,6 +337,8 @@ static int pinToGpioR1 [64] =
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
 } ;
 
+// Revision 2:
+
 static int pinToGpioR2 [64] =
 {
   17, 18, 27, 22, 23, 24, 25, 4,	// From the Original Wiki - GPIO 0 through 7:	wpi  0 -  7
@@ -260,11 +346,13 @@ static int pinToGpioR2 [64] =
    8,  7,				// SPI  - CE1, CE0				wpi 10 - 11
   10,  9, 11, 				// SPI  - MOSI, MISO, SCLK			wpi 12 - 14
   14, 15,				// UART - Tx, Rx				wpi 15 - 16
-  28, 29, 30, 31,			// New GPIOs 8 though 11			wpi 17 - 20
+  28, 29, 30, 31,			// Rev 2: New GPIOs 8 though 11			wpi 17 - 20
+   5,  6, 13, 19, 26,			// B+						wpi 21, 22, 23, 24, 25
+  12, 16, 20, 21,			// B+						wpi 26, 27, 28, 29
+   0,  1,				// B+						wpi 30, 31
 
 // Padding:
 
-                      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 31
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
 } ;
@@ -273,6 +361,7 @@ static int pinToGpioR2 [64] =
 // physToGpio:
 //	Take a physical pin (1 through 26) and re-map it to the BCM_GPIO pin
 //	Cope for 2 different board revisions here.
+//	Also add in the P5 connector, so the P5 pins are 3,4,5,6, so 53,54,55,56
 
 static int *physToGpio ;
 
@@ -292,8 +381,6 @@ static int physToGpioR1 [64] =
    9, 25,
   11,  8,
   -1,  7,	// 25, 26
-
-// Padding:
 
                                               -1, -1, -1, -1, -1,	// ... 31
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
@@ -317,13 +404,30 @@ static int physToGpioR2 [64] =
   11,  8,
   -1,  7,	// 25, 26
 
-// Padding:
+// B+
 
-                                              -1, -1, -1, -1, -1,	// ... 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
+   0,  1,
+   5, -1,
+   6, 12,
+  13, -1,
+  19, 16,
+  26, 20,
+  -1, 21,
+
+// the P5 connector on the Rev 2 boards:
+
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  28, 29,
+  30, 31,
+  -1, -1,
+  -1, -1,
+  -1, -1,
+  -1, -1,
 } ;
-
 
 // gpioToGPFSEL:
 //	Map a BCM_GPIO pin to it's Function Selection
@@ -394,7 +498,7 @@ static uint8_t gpioToEDS [] =
 } ;
 
 // gpioToREN
-//	(Word) offset to the Rising edgde ENable register
+//	(Word) offset to the Rising edge ENable register
 
 static uint8_t gpioToREN [] =
 {
@@ -508,136 +612,124 @@ static uint8_t gpioToClkDiv [] =
          -1,        -1,        -1,        -1,        -1,        -1,        -1,        -1,	// 48 -> 55
          -1,        -1,        -1,        -1,        -1,        -1,        -1,        -1,	// 56 -> 63
 } ;
-//add for bananapi,add by zhengfeng xiao start
-/* for mmap bananapi */
-#define	MAX_PIN_NUM		(0x40)  //64
-#define SUNXI_GPIO_BASE (0x01C20800)
-#define MAP_SIZE	(4096*2)
-#define MAP_MASK	(MAP_SIZE - 1)
-//sunxi_pwm
-#define SUNXI_PWM_BASE (0x01c20e00)
-#define SUNXI_PWM_CTRL_REG  (SUNXI_PWM_BASE)
-#define SUNXI_PWM_CH0_PERIOD  (SUNXI_PWM_BASE + 0x4)
-#define SUNXI_PWM_CH1_PERIOD  (SUNXI_PWM_BASE + 0x8)
-
-#define SUNXI_PWM_CH0_EN			(1 << 4)
-#define SUNXI_PWM_CH0_ACT_STA		(1 << 5)
-#define SUNXI_PWM_SCLK_CH0_GATING	(1 << 6)
-#define SUNXI_PWM_CH0_MS_MODE		(1 << 7) //pulse mode
-#define SUNXI_PWM_CH0_PUL_START		(1 << 8)
-
-#define SUNXI_PWM_CH1_EN			(1 << 19)
-#define SUNXI_PWM_CH1_ACT_STA		(1 << 20)
-#define SUNXI_PWM_SCLK_CH1_GATING	(1 << 21)
-#define SUNXI_PWM_CH1_MS_MODE		(1 << 22) //pulse mode
-#define SUNXI_PWM_CH1_PUL_START		(1 << 23)
 
 
-#define PWM_CLK_DIV_120 	        0
-#define PWM_CLK_DIV_180		1
-#define PWM_CLK_DIV_240		2
-#define PWM_CLK_DIV_360		3
-#define PWM_CLK_DIV_480		4
-#define PWM_CLK_DIV_12K		8
-#define PWM_CLK_DIV_24K		9
-#define PWM_CLK_DIV_36K		10
-#define PWM_CLK_DIV_48K		11
-#define PWM_CLK_DIV_72K		12
+/*add for BananaPro by LeMaker team*/
+//map tableb for BP
 
-#define GPIO_PADS_BP		(0x00100000)
-#define CLOCK_BASE_BP		(0x00101000)
-//	addr should 4K*n
-//	#define GPIO_BASE_BP		(SUNXI_GPIO_BASE)
-#define GPIO_BASE_BP		(0x01C20000)
-#define GPIO_TIMER_BP		(0x0000B000)
-#define GPIO_PWM_BP		(0x01c20000)  //need 4k*n
+static int *physToPin ;
 
-static int wiringPinMode = WPI_MODE_UNINITIALISED ;
-int wiringPiCodes = FALSE ;
-
-/*
-	map tableb for BP
-*/
 static int pinToGpio_BP [64] =
 {
-  275,226,
+  275,259,
  274,273,
  244,245,
- 272,259,
+ 272,226,
  53,52,
  266,270,
  268,269,
- 267,224,
- 225,229,
- 277,227,
- 276,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 63
+ 267,228,
+ 229, -1,
+ -1, -1,
+ -1,  35, 
+ 277,45, 
+ 39, 37, 
+ 276,38, 
+ 44,40,
+ 257,256,      // ...31
+
+ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,// ... 63
 } ;
 
 static int pinTobcm_BP [64] =
 {
-  53,52,
- 53,52,
- 259,-1,
- -1,270,
- 266,269,//9
- 268,267,
- -1,-1,
- 224,225,
- -1,275,
- 226,-1,//19
- -1,
-274, 273, 244, 245, 272, -1, 274, 229, 277, 227, // ... 31
-  276, -1,-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 63
+ 257,256,   //map to BCM GPIO0,1
+ 53,52,       //map to BCM GPIO2,3
+ 226,35,     //map to BCM GPIO4,5
+ 277,270,   //map to BCM GPIO6,7
+ 266,269,   //map to BCM GPIO8,9
+ 268,267,   //map to BCM GPIO10,11
+ 276,45,      //map to BCM GPIO12,13
+ 228,229,   //map to BCM GPIO14,15
+ 38,275,    //map to BCM GPIO16,17
+ 259,39,    //map to BCM GPIO18,19
+ 44, 40,     //map to BCM GPIO20,21
+ 273,244,    //map to BCM GPIO22,23
+ 245,272,    //map to BCM GPIO24,25
+ 37, 274,     //map to BCM GPIO26,27
+ 
+  -1,-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  // 29... 44
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //45... 60
+  -1, -1, -1, -1                                                                   // ...63
 } ;
 static int physToGpio_BP [64] =
 {
-  -1,  // 0
-  -1, -1, // 1, 2
-   53, -1,
-   52, -1,
-   259, 224,
-  -1, 225,
-  275, 226,
-  274, -1,
-  273, 244,
-  -1, 245,
-  268, -1,
-   269, 272,
-  267,  266,
-  -1,  270, // 25, 26
- -1, -1,
- 229,277,
-  227,276,                                           
-   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 48
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 63
+  -1,          // 0
+  -1,     -1,     //1, 2
+   53,    -1,     //3, 4
+   52,    -1,     //5, 6
+   226,  228,   //7, 8
+  -1,     229,   //9, 10
+  275,   259,   //11, 12
+  274,   -1,     //13, 14
+  273,   244,   //15, 16
+  -1,     245,   //17, 18
+  268,   -1,     //19, 20
+   269,  272,   //21, 22
+  267,   266,   //23, 24
+  -1,    270,   //25, 26
+  257,   256,  //27, 28
+  35,    -1,    //29, 30
+  277,  276,   //31, 32      
+  45,   -1,      //33, 34
+  39,   38,    //35, 36
+  37,   44,     //37, 38
+  -1,   40,    //39, 40
+   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //41-> 55
+   -1, -1, -1, -1, -1, -1, -1, -1 // 56-> 63
 } ;
-
 
 
 static int syspin [64] =
 {
-  -1, 1, 2, 3, 4, -1, -1, 7,
-  8, 9, 10, 11, -1,-1, 14, 15,
-  -1, 17, 18, -1, -1, 21, 22, 23,
-  24, 25, -1, 27, 28, 29, 30, 31,
+  -1, -1, 2, 3, 4, 5, 6, 7,   //GPIO0,1 used to I2C
+  8, 9, 10, 11, 12,13, 14, 15,
+  16, 17, 18, 19, 20, 21, 22, 23,
+  24, 25, 26, 27, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 } ;
 
 static int edge [64] =
 {
-  -1, -1, -1, -1, -1, -1, -1, 7, 
+  -1, -1, -1, -1, 4, -1, -1, 7,   //support the INT
   8, 9, 10, 11, -1,-1, 14, 15,
-  -1, 17, 18, -1, -1, 21, 22, 23,
-  24, 25, -1, 27, 28, -1, 30, -1,
+  -1, 17, -1, -1, -1, -1, 22, 23,
+  24, 25, -1, 27, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 } ;
-static int physToGpioR3 [64] =//head 2 arm pin and p5
+
+static int pinToGpioR3 [64] =
+{
+  17, 18, 27, 22, 23, 24, 25, 4,	// From the Original Wiki - GPIO 0 through 7:	wpi  0 -  7
+   2,  3,				// I2C  - SDA0, SCL0				wpi  8 -  9
+   8,  7,				// SPI  - CE1, CE0				wpi 10 - 11
+  10,  9, 11, 				// SPI  - MOSI, MISO, SCLK			wpi 12 - 14
+  14, 15,				// UART - Tx, Rx				wpi 15 - 16
+  -1, -1, -1, -1,			// Rev 2: New GPIOs 8 though 11			wpi 17 - 20
+   5,  6, 13, 19, 26,			// B+						wpi 21, 22, 23, 24, 25
+  12, 16, 20, 21,			// B+						wpi 26, 27, 28, 29
+   0,  1,				// B+						wpi 30, 31
+
+// Padding:
+
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
+} ;
+
+static int physToGpioR3 [64] =//head num map to BCMpin
 {
   -1,		// 0
   -1, -1,	// 1, 2
@@ -653,38 +745,73 @@ static int physToGpioR3 [64] =//head 2 arm pin and p5
    9, 25,
   11,  8,
   -1,  7,	// 25, 26
-
+  
+  0,   1,   //27, 28
+  5,  -1,  //29, 30
+  6,  12,  //31, 32
+  13, -1, //33, 34
+  19, 16, //35, 36
+  26, 20, //37, 38
+  -1, 21, //39, 40
 // Padding:
 
-                                              -1, -1, 28, 29, 30,	// ... 31
-  31, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 56
+  -1, -1, -1, -1, -1, -1, -1, 	// ... 63
 } ;
+
+static int physToPinR3 [64] = //return wiringPI pin
+{
+  -1,		// 0
+  -1, -1,	// 1, 2
+   8, -1,  //3, 4
+   9, -1,  //5, 6
+   7, 15,  //7, 8
+  -1, 16, //9,10
+  0, 1, //11,12
+  2, -1, //13,14
+  3, 4, //15,16
+  -1, 5, //17,18
+  12, -1, //19,20
+   13, 6, //21,22
+  14, 10, //23, 24
+  -1,  11,	// 25, 26
+  
+  30,   31,   //27, 28
+  21,  -1,  //29, 30
+  22,  26,  //31, 32
+  23, -1, //33, 34
+  24, 27, //35, 36
+  25, 28, //37, 38
+  -1, 29, //39, 40
+// Padding:
+
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 56
+  -1, -1, -1, -1, -1, -1, -1, 	// ... 63
+} ;
+
 static int BP_PIN_MASK[9][32] =  //[BANK]  [INDEX]
 {
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PA
- {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PB
+ {-1,-1,-1, 3,-1,  5,  6, 7,  8,-1,-1,-1,12,13,-1,-1,-1,-1,-1,-1,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PB
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PC
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PD
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PE
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PF
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PG
- {0,1,2,3,-1,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PH
- {-1,-1,-1,3,-1,-1,-1,-1,-1,-1,10,11,12,13,14,-1,16,17,18,19,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PI
+ {-1,-1,  2,-1, 4,  5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PH
+ {0,1,-1,3,-1,-1,-1,-1,-1,-1,10,11,12,13,14,-1,16,17,18,19,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PI
 };
 static int version=0;
 static int pwmmode=0;
 
-//add for bananapi,add by zhengfeng xiao end
+/*end 20140918*/
+
 /*
  * Functions
  *********************************************************************************
  */
- /**
- *
- * zhengfeng xiao tools func A20 for Banana Pi start
- *
- */
+ 
+/*add for BananaPro by LeMaker team*/ 
  uint32_t readl(uint32_t addr)
 {
 	  uint32_t val = 0;
@@ -700,7 +827,7 @@ void writel(uint32_t val, uint32_t addr)
 	  uint32_t mmap_seek = ((addr - mmap_base) >> 2);
 	  *(gpio + mmap_seek) = val;
 }
-//pwm for bananapi only for pwm1
+//pwm for BananaPro only for pwm1
 void sunxi_pwm_set_enable(int en)
 {
 	 int val = 0;
@@ -714,7 +841,7 @@ void sunxi_pwm_set_enable(int en)
 		val &= ~(SUNXI_PWM_CH1_EN | SUNXI_PWM_SCLK_CH1_GATING);
 	 }
 	  if (wiringPiDebug)
-		printf(">>func£º%s,no:%d,enable? :0x%x\n",__func__, __LINE__, val);
+		printf(">>function%s,no:%d,enable? :0x%x\n",__func__, __LINE__, val);
 	 writel(val, SUNXI_PWM_CTRL_REG);
 	 delay (1) ;
 }
@@ -735,7 +862,7 @@ void sunxi_pwm_set_mode(int mode)
 	 }
 	 val |= ( SUNXI_PWM_CH1_ACT_STA);
 	   if (wiringPiDebug)
-			printf(">>func£º%s,no:%d,mode? :0x%x\n",__func__, __LINE__, val);
+			printf(">>function%s,no:%d,mode? :0x%x\n",__func__, __LINE__, val);
 	 writel(val, SUNXI_PWM_CTRL_REG);
 	 delay (1) ;
 }
@@ -751,7 +878,7 @@ void sunxi_pwm_set_clk(int clk)
 	 writel(val, SUNXI_PWM_CTRL_REG);
 	 sunxi_pwm_set_enable(1);
 	 if (wiringPiDebug)
-		printf(">>func£º%s,no:%d,clk? :0x%x\n",__func__, __LINE__, val);
+		printf(">>function%s,no:%d,clk? :0x%x\n",__func__, __LINE__, val);
 	delay (1) ;
 }
 /**
@@ -965,7 +1092,7 @@ void sunxi_pullUpDnControl (int pin, int pud)
 	 int index = pin - (bank << 5);
 	 int sub = index >> 4;
 	 int sub_index = index - 16*sub;
-	 uint32_t phyaddr = SUNXI_GPIO_BASE + (bank * 36) + 0x1c + sub; // +0x10 -> pullUpDn reg
+	 uint32_t phyaddr = SUNXI_GPIO_BASE + (bank * 36) + 0x1c + sub*4; // +0x10 -> pullUpDn reg
 	   if (wiringPiDebug)
 			printf("func:%s pin:%d,bank:%d index:%d sub:%d phyaddr:0x%x\n",__func__, pin,bank,index,sub,phyaddr); 
 	 if(BP_PIN_MASK[bank][index] != -1)
@@ -989,6 +1116,8 @@ void sunxi_pullUpDnControl (int pin, int pud)
 	 delay (1) ;	
 	return ;
 }
+/*end 2014.09.18*/
+
 /*
  * wiringPiFailure:
  *	Fail. Or not.
@@ -1012,39 +1141,54 @@ int wiringPiFailure (int fatal, const char *message, ...)
 
   return 0 ;
 }
+
+
 /*
  * piBoardRev:
  *	Return a number representing the hardware revision of the board.
- *	Revision is currently 1 or 2.
  *
- *	Much confusion here )-:
+ *	Revision 1 really means the early Model B's.
+ *	Revision 2 is everything else - it covers the B, B+ and CM.
+ *
  *	Seems there are some boards with 0000 in them (mistake in manufacture)
- *	and some board with 0005 in them (another mistake in manufacture?)
  *	So the distinction between boards that I can see is:
  *	0000 - Error
- *	0001 - Not used
- *	0002 - Rev 1
- *	0003 - Rev 1
- *	0004 - Rev 2 (Early reports?
- *	0005 - Rev 2 (but error?)
- *	0006 - Rev 2
- *	0008 - Rev 2 - Model A
- *	000e - Rev 2 + 512MB
- *	000f - Rev 2 + 512MB
+ *	0001 - Not used 
+ *	0002 - Model B,  Rev 1,   256MB, Egoman
+ *	0003 - Model B,  Rev 1.1, 256MB, Egoman, Fuses/D14 removed.
+ *	0004 - Model B,  Rev 2,   256MB, Sony
+ *	0005 - Model B,  Rev 2,   256MB, Qisda
+ *	0006 - Model B,  Rev 2,   256MB, Egoman
+ *	0007 - Model A,  Rev 2,   256MB, Egoman
+ *	0008 - Model A,  Rev 2,   256MB, Sony
+ *	0009 - Model A,  Rev 2,   256MB, Qisda
+ *	000d - Model B,  Rev 2,   512MB, Egoman
+ *	000e - Model B,  Rev 2,   512MB, Sony
+ *	000f - Model B,  Rev 2,   512MB, Qisda
+ *	0010 - Model B+, Rev 1.2, 512MB, Sony
+ *	0011 - Pi CM,    Rev 1.2, 512MB, Sony
  *
  *	A small thorn is the olde style overvolting - that will add in
  *		1000000
  *
+ *	The Pi compute module has an revision of 0011 - since we only check the
+ *	last digit, then it's 1, therefore it'll default to not 2 or 3 for a
+ *	Rev 1, so will appear as a Rev 2. This is fine for the most part, but
+ *	we'll properly detect the Compute Module later and adjust accordingly.
+ *
  *********************************************************************************
  */
+
 static void piBoardRevOops (const char *why)
 {
   fprintf (stderr, "piBoardRev: Unable to determine board revision from /proc/cpuinfo\n") ;
   fprintf (stderr, " -> %s\n", why) ;
   fprintf (stderr, " ->  You may want to check:\n") ;
-  fprintf (stderr, " ->  http://www.lemaker.org/\n") ;
+  fprintf (stderr, " ->  http://www.lemaker.org/\n") ;  /*modify for BananaPro by LeMmaker team*/
   exit (EXIT_FAILURE) ;
 }
+
+/*add for BananaPro by LeMaker team*/
 int isA20(void)
 {
   FILE *cpuFd ;
@@ -1080,19 +1224,25 @@ int isA20(void)
 		return 0 ;
 	}
 }
+/*end 2014.09.18*/
+
 int piBoardRev (void)
 {
   FILE *cpuFd ;
   char line [120] ;
-  char *c, lastChar ;
+  char *c ;
   static int  boardRev = -1 ;
-	if(isA20())
-	{
-		version=3;
+
+/*add for BananaPro by LeMaker team*/
+  if(isA20())
+  {
+	version = BPRVER;
 		if (wiringPiDebug)
 			printf ("piboardRev:  %d\n", version) ;
-		return 3 ;
-	}
+		return BPRVER ;
+  }
+ /*end 2014.09.18*/
+ 
   if (boardRev != -1)	// No point checking twice
     return boardRev ;
 
@@ -1108,11 +1258,15 @@ int piBoardRev (void)
   if (strncmp (line, "Revision", 8) != 0)
     piBoardRevOops ("No \"Revision\" line") ;
 
+// Chomp trailing CR/NL
+
   for (c = &line [strlen (line) - 1] ; (*c == '\n') || (*c == '\r') ; --c)
     *c = 0 ;
   
   if (wiringPiDebug)
     printf ("piboardRev: Revision string: %s\n", line) ;
+
+// Scan to first digit
 
   for (c = line ; *c ; ++c)
     if (isdigit (*c))
@@ -1121,6 +1275,11 @@ int piBoardRev (void)
   if (!isdigit (*c))
     piBoardRevOops ("No numeric revision string") ;
 
+// Make sure its long enough
+
+  if (strlen (c) < 4)
+    piBoardRevOops ("Bogus \"Revision\" line (too small)") ;
+  
 // If you have overvolted the Pi, then it appears that the revision
 //	has 100000 added to it!
 
@@ -1128,12 +1287,14 @@ int piBoardRev (void)
     if (strlen (c) != 4)
       printf ("piboardRev: This Pi has/is overvolted!\n") ;
 
-  lastChar = line [strlen (line) - 1] ;
+// Isolate  last 4 characters:
+
+  c = c + strlen (c) - 4 ;
 
   if (wiringPiDebug)
-    printf ("piboardRev: lastChar is: '%c' (%d, 0x%02X)\n", lastChar, lastChar, lastChar) ;
+    printf ("piboardRev: last4Chars are: \"%s\"\n", c) ;
 
-  /**/ if ((lastChar == '2') || (lastChar == '3'))
+  if ( (strcmp (c, "0002") == 0) || (strcmp (c, "0003") == 0))
     boardRev = 1 ;
   else
     boardRev = 2 ;
@@ -1143,6 +1304,87 @@ int piBoardRev (void)
 
   return boardRev ;
 }
+
+
+/*
+ * piBoardId:
+ *	Do more digging into the board revision string as above, but return
+ *	as much details as we can.
+ *	This is undocumented and really only intended for the GPIO command.
+ *	Use at your own risk!
+ *********************************************************************************
+ */
+
+void piBoardId (int *model, int *rev, int *mem, int *maker, int *overVolted)
+{
+  FILE *cpuFd ;
+  char line [120] ;
+  char *c ;
+
+  (void)piBoardRev () ;	// Call this first to make sure all's OK. Don't care about the result.
+
+  if ((cpuFd = fopen ("/proc/cpuinfo", "r")) == NULL)
+    piBoardRevOops ("Unable to open /proc/cpuinfo") ;
+
+  while (fgets (line, 120, cpuFd) != NULL)
+    if (strncmp (line, "Revision", 8) == 0)
+      break ;
+
+  fclose (cpuFd) ;
+
+  if (strncmp (line, "Revision", 8) != 0)
+    piBoardRevOops ("No \"Revision\" line") ;
+
+// Chomp trailing CR/NL
+
+  for (c = &line [strlen (line) - 1] ; (*c == '\n') || (*c == '\r') ; --c)
+    *c = 0 ;
+  
+  if (wiringPiDebug)
+    printf ("piboardId: Revision string: %s\n", line) ;
+
+// Scan to first digit
+
+  for (c = line ; *c ; ++c)
+    if (isdigit (*c))
+      break ;
+
+// Make sure its long enough
+
+  if (strlen (c) < 4)
+    piBoardRevOops ("Bogus \"Revision\" line") ;
+
+// If longer than 4, we'll assume it's been overvolted
+
+  *overVolted = strlen (c) > 4 ;
+  
+// Extract last 4 characters:
+
+  c = c + strlen (c) - 4 ;
+
+// Fill out the replys as appropriate
+
+  /**/ if (strcmp (c, "0002") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_1   ; *mem = 256 ; *maker = PI_MAKER_EGOMAN ; }
+  else if (strcmp (c, "0003") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_1_1 ; *mem = 256 ; *maker = PI_MAKER_EGOMAN ; }
+  else if (strcmp (c, "0004") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 256 ; *maker = PI_MAKER_SONY   ; }
+  else if (strcmp (c, "0005") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 256 ; *maker = PI_MAKER_QISDA  ; }
+  else if (strcmp (c, "0006") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 256 ; *maker = PI_MAKER_EGOMAN ; }
+  else if (strcmp (c, "0007") == 0) { *model = PI_MODEL_A  ; *rev = PI_VERSION_2   ; *mem = 256 ; *maker = PI_MAKER_EGOMAN ; }
+  else if (strcmp (c, "0008") == 0) { *model = PI_MODEL_A  ; *rev = PI_VERSION_2   ; *mem = 256 ; *maker = PI_MAKER_SONY ; ; }
+  else if (strcmp (c, "0009") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 256 ; *maker = PI_MAKER_QISDA  ; }
+  else if (strcmp (c, "000d") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 512 ; *maker = PI_MAKER_EGOMAN ; }
+  else if (strcmp (c, "000e") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 512 ; *maker = PI_MAKER_SONY   ; }
+  else if (strcmp (c, "000f") == 0) { *model = PI_MODEL_B  ; *rev = PI_VERSION_2   ; *mem = 512 ; *maker = PI_MAKER_EGOMAN ; }
+  else if (strcmp (c, "0010") == 0) { *model = PI_MODEL_BP ; *rev = PI_VERSION_1_2 ; *mem = 512 ; *maker = PI_MAKER_SONY   ; }
+  else if (strcmp (c, "0011") == 0) { *model = PI_MODEL_CM ; *rev = PI_VERSION_1_2 ; *mem = 512 ; *maker = PI_MAKER_SONY   ; }
+//add for BananaPro by LeMaker team
+  else if (strcmp (c, "0000") == 0) { *model = PI_MODEL_BPR;  *rev = PI_VERSION_1_2;  *mem = 1024;  *maker = PI_MAKER_LEMAKER;}
+//end 2014.09.30
+  else                              { *model = 0           ; *rev = 0              ; *mem =   0 ; *maker = 0 ;               }
+}
+ 
+
+
 /*
  * wpiPinToGpio:
  *	Translate a wiringPi Pin number to native GPIO pin number.
@@ -1167,6 +1409,18 @@ int physPinToGpio (int physPin)
 {
   return physToGpio [physPin & 63] ;
 }
+
+/*
+ * physPinToGpio:
+ *	Translate a physical Pin number to wiringPi  pin number. add by lemaker team for BananaPi
+ *	Provided for external support.
+ *********************************************************************************
+ */
+int physPinToPin(int physPin)
+{
+	return physToPin [physPin & 63] ;
+}
+
 /*
  * setPadDrive:
  *	Set the PAD driver value
@@ -1175,27 +1429,28 @@ int physPinToGpio (int physPin)
 
 void setPadDrive (int group, int value)
 {
-	  uint32_t wrVal ;
-	if(version==3)
-		return ;
-	else
-	{
-		  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
-		  {
-			if ((group < 0) || (group > 2))
-			  return ;
+  uint32_t wrVal ;
+ /*add for BananaPro by LeMaker team*/
+  if(BPRVER == version) 
+  	return;
+ /*end 2014.08.19*/
+  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
+  {
+    if ((group < 0) || (group > 2))
+      return ;
 
-			wrVal = BCM_PASSWORD | 0x18 | (value & 7) ;
-			*(pads + group + 11) = wrVal ;
+    wrVal = BCM_PASSWORD | 0x18 | (value & 7) ;
+    *(pads + group + 11) = wrVal ;
 
-			if (wiringPiDebug)
-			{
-			  printf ("setPadDrive: Group: %d, value: %d (%08X)\n", group, value, wrVal) ;
-			  printf ("Read : %08X\n", *(pads + group + 11)) ;
-			}
-		  }
-	}
+    if (wiringPiDebug)
+    {
+      printf ("setPadDrive: Group: %d, value: %d (%08X)\n", group, value, wrVal) ;
+      printf ("Read : %08X\n", *(pads + group + 11)) ;
+    }
+  }
 }
+
+
 /*
  * getAlt:
  *	Returns the ALT bits for a given port. Only really of-use
@@ -1205,11 +1460,12 @@ void setPadDrive (int group, int value)
 
 int getAlt (int pin)
 {
-	  int fSel, shift, alt ;
-	if(version==3)
-	{
-		pin &= 63 ;
+  int fSel, shift, alt ;
 
+  pin &= 63 ;
+   /*add for BananaPro by LeMaker team*/
+	if(BPRVER == version)
+	{
 		if (wiringPiMode == WPI_MODE_PINS)
 			pin = pinToGpio_BP [pin] ;
 		else if (wiringPiMode == WPI_MODE_PHYS)
@@ -1217,30 +1473,33 @@ int getAlt (int pin)
 		else if (wiringPiMode == WPI_MODE_GPIO)
 			pin=pinTobcm_BP[pin];//need map A20 to bcm
 		else return 0 ;
-		
+
+		if(-1 == pin)
+		{
+			printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+			return -1;
+		}
 		alt=sunxi_get_gpio_mode(pin);
 		 return alt ;
 	}
-		
-	else
-	{
-	  pin &= 63 ;
+/*end 2014.08.19*/
 
-	  /**/ if (wiringPiMode == WPI_MODE_PINS)
-		pin = pinToGpio [pin] ;
-	  else if (wiringPiMode == WPI_MODE_PHYS)
-		pin = physToGpio [pin] ;
-	  else if (wiringPiMode != WPI_MODE_GPIO)
-		return 0 ;
+  /**/ if (wiringPiMode == WPI_MODE_PINS)
+    pin = pinToGpio [pin] ;
+  else if (wiringPiMode == WPI_MODE_PHYS)
+    pin = physToGpio [pin] ;
+  else if (wiringPiMode != WPI_MODE_GPIO)
+    return 0 ;
 
-	  fSel    = gpioToGPFSEL [pin] ;
-	  shift   = gpioToShift  [pin] ;
+  fSel    = gpioToGPFSEL [pin] ;
+  shift   = gpioToShift  [pin] ;
 
-	  alt = (*(gpio + fSel) >> shift) & 7 ;
+  alt = (*(gpio + fSel) >> shift) & 7 ;
 
-	  return alt ;
-	}
+  return alt ;
 }
+
+
 /*
  * pwmSetMode:
  *	Select the native "balanced" mode, or standard mark:space mode
@@ -1249,21 +1508,24 @@ int getAlt (int pin)
 
 void pwmSetMode (int mode)
 {
-	if(version==3)
-	{
-		sunxi_pwm_set_mode(mode);
-	}
-	else
-	{
-	  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
-	  {
-		if (mode == PWM_MODE_MS)
-		  *(pwm + PWM_CONTROL) = PWM0_ENABLE | PWM1_ENABLE | PWM0_MS_MODE | PWM1_MS_MODE ;
-		else
-		  *(pwm + PWM_CONTROL) = PWM0_ENABLE | PWM1_ENABLE ;
-	  }
-	}
+   /*add for BananaPro by LeMaker team*/
+  if (BPRVER == version)
+  {
+  		sunxi_pwm_set_mode(mode);
+		return;
+  }
+  /*end 2014.08.19*/
+  
+  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
+  {
+    if (mode == PWM_MODE_MS)
+      *(pwm + PWM_CONTROL) = PWM0_ENABLE | PWM1_ENABLE | PWM0_MS_MODE | PWM1_MS_MODE ;
+    else
+      *(pwm + PWM_CONTROL) = PWM0_ENABLE | PWM1_ENABLE ;
+  }
 }
+
+
 /*
  * pwmSetRange:
  *	Set the PWM range register. We set both range registers to the same
@@ -1273,19 +1535,21 @@ void pwmSetMode (int mode)
 
 void pwmSetRange (unsigned int range)
 {
-	if(version==3)
-	{
-		sunxi_pwm_set_period(range);
-	}
-	else
-	{
-	  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
-	  {
-		*(pwm + PWM0_RANGE) = range ; delayMicroseconds (10) ;
-		*(pwm + PWM1_RANGE) = range ; delayMicroseconds (10) ;
-	  }
-	}
+ /*add for BananaPro by LeMaker team*/
+  if (BPRVER == version)
+  {
+  	  sunxi_pwm_set_period(range);
+	  return;
+  }
+ /*end 2014.08.19*/
+  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
+  {
+    *(pwm + PWM0_RANGE) = range ; delayMicroseconds (10) ;
+    *(pwm + PWM1_RANGE) = range ; delayMicroseconds (10) ;
+  }
 }
+
+
 /*
  * pwmSetClock:
  *	Set/Change the PWM clock. Originally my code, but changed
@@ -1297,48 +1561,53 @@ void pwmSetRange (unsigned int range)
 void pwmSetClock (int divisor)
 {
   uint32_t pwm_control ;
-  divisor &= 4095 ;
-	if(version==3)
-	{
-	 sunxi_pwm_set_clk(divisor);
+	
+ /*add for BananaPro by LeMaker team*/
+ if (BPRVER == version)
+ {
+ 	 sunxi_pwm_set_clk(divisor);
 	 sunxi_pwm_set_enable(1);
-	 }
-	else //for PI 
-	{
-	  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
-	  {
-		if (wiringPiDebug)
-		  printf ("Setting to: %d. Current: 0x%08X\n", divisor, *(clk + PWMCLK_DIV)) ;
+	 return;
+ }
+ /*end 2014.08.19*/
+ 
+  divisor &= 4095 ;
+ 	
+  if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
+  {
+    if (wiringPiDebug)
+      printf ("Setting to: %d. Current: 0x%08X\n", divisor, *(clk + PWMCLK_DIV)) ;
 
-		pwm_control = *(pwm + PWM_CONTROL) ;		// preserve PWM_CONTROL
+    pwm_control = *(pwm + PWM_CONTROL) ;		// preserve PWM_CONTROL
 
-	// We need to stop PWM prior to stopping PWM clock in MS mode otherwise BUSY
-	// stays high.
+// We need to stop PWM prior to stopping PWM clock in MS mode otherwise BUSY
+// stays high.
 
-		*(pwm + PWM_CONTROL) = 0 ;				// Stop PWM
+    *(pwm + PWM_CONTROL) = 0 ;				// Stop PWM
 
-	// Stop PWM clock before changing divisor. The delay after this does need to
-	// this big (95uS occasionally fails, 100uS OK), it's almost as though the BUSY
-	// flag is not working properly in balanced mode. Without the delay when DIV is
-	// adjusted the clock sometimes switches to very slow, once slow further DIV
-	// adjustments do nothing and it's difficult to get out of this mode.
+// Stop PWM clock before changing divisor. The delay after this does need to
+// this big (95uS occasionally fails, 100uS OK), it's almost as though the BUSY
+// flag is not working properly in balanced mode. Without the delay when DIV is
+// adjusted the clock sometimes switches to very slow, once slow further DIV
+// adjustments do nothing and it's difficult to get out of this mode.
 
-		*(clk + PWMCLK_CNTL) = BCM_PASSWORD | 0x01 ;	// Stop PWM Clock
-		  delayMicroseconds (110) ;			// prevents clock going sloooow
+    *(clk + PWMCLK_CNTL) = BCM_PASSWORD | 0x01 ;	// Stop PWM Clock
+      delayMicroseconds (110) ;			// prevents clock going sloooow
 
-		while ((*(clk + PWMCLK_CNTL) & 0x80) != 0)	// Wait for clock to be !BUSY
-		  delayMicroseconds (1) ;
+    while ((*(clk + PWMCLK_CNTL) & 0x80) != 0)	// Wait for clock to be !BUSY
+      delayMicroseconds (1) ;
 
-		*(clk + PWMCLK_DIV)  = BCM_PASSWORD | (divisor << 12) ;
+    *(clk + PWMCLK_DIV)  = BCM_PASSWORD | (divisor << 12) ;
 
-		*(clk + PWMCLK_CNTL) = BCM_PASSWORD | 0x11 ;	// Start PWM clock
-		*(pwm + PWM_CONTROL) = pwm_control ;		// restore PWM_CONTROL
+    *(clk + PWMCLK_CNTL) = BCM_PASSWORD | 0x11 ;	// Start PWM clock
+    *(pwm + PWM_CONTROL) = pwm_control ;		// restore PWM_CONTROL
 
-		if (wiringPiDebug)
-		  printf ("Set     to: %d. Now    : 0x%08X\n", divisor, *(clk + PWMCLK_DIV)) ;
-	  }
-	}
+    if (wiringPiDebug)
+      printf ("Set     to: %d. Now    : 0x%08X\n", divisor, *(clk + PWMCLK_DIV)) ;
+  }
 }
+
+
 /*
  * gpioClockSet:
  *	Set the freuency on a GPIO clock pin
@@ -1348,36 +1617,36 @@ void pwmSetClock (int divisor)
 void gpioClockSet (int pin, int freq)
 {
   int divi, divr, divf ;
-	if(version==3)
-	{
-		return ;
-	}
-	else
-	{
-		  pin &= 63 ;
+/*add for BananaPro by LeMaker team*/
+  if (BPRVER == version)
+		return;
+/*end 2014.08.19*/
 
-		  /**/ if (wiringPiMode == WPI_MODE_PINS)
-			pin = pinToGpio [pin] ;
-		  else if (wiringPiMode == WPI_MODE_PHYS)
-			pin = physToGpio [pin] ;
-		  else if (wiringPiMode != WPI_MODE_GPIO)
-			return ;
-		  
-		  divi = 19200000 / freq ;
-		  divr = 19200000 % freq ;
-		  divf = (int)((double)divr * 4096.0 / 19200000.0) ;
+  pin &= 63 ;
 
-		  if (divi > 4095)
-			divi = 4095 ;
+  /**/ if (wiringPiMode == WPI_MODE_PINS)
+    pin = pinToGpio [pin] ;
+  else if (wiringPiMode == WPI_MODE_PHYS)
+    pin = physToGpio [pin] ;
+  else if (wiringPiMode != WPI_MODE_GPIO)
+    return ;
+  
+  divi = 19200000 / freq ;
+  divr = 19200000 % freq ;
+  divf = (int)((double)divr * 4096.0 / 19200000.0) ;
 
-		  *(clk + gpioToClkCon [pin]) = BCM_PASSWORD | GPIO_CLOCK_SOURCE ;		// Stop GPIO Clock
-		  while ((*(clk + gpioToClkCon [pin]) & 0x80) != 0)				// ... and wait
-			;
+  if (divi > 4095)
+    divi = 4095 ;
 
-		  *(clk + gpioToClkDiv [pin]) = BCM_PASSWORD | (divi << 12) | divf ;		// Set dividers
-		  *(clk + gpioToClkCon [pin]) = BCM_PASSWORD | 0x10 | GPIO_CLOCK_SOURCE ;	// Start Clock
-	}
+  *(clk + gpioToClkCon [pin]) = BCM_PASSWORD | GPIO_CLOCK_SOURCE ;		// Stop GPIO Clock
+  while ((*(clk + gpioToClkCon [pin]) & 0x80) != 0)				// ... and wait
+    ;
+
+  *(clk + gpioToClkDiv [pin]) = BCM_PASSWORD | (divi << 12) | divf ;		// Set dividers
+  *(clk + gpioToClkCon [pin]) = BCM_PASSWORD | 0x10 | GPIO_CLOCK_SOURCE ;	// Start Clock
 }
+
+
 /*
  * wiringPiFindNode:
  *      Locate our device node
@@ -1396,6 +1665,7 @@ struct wiringPiNodeStruct *wiringPiFindNode (int pin)
 
   return NULL ;
 }
+
 
 /*
  * wiringPiNewNode:
@@ -1462,6 +1732,7 @@ void pinEnableED01Pi (int pin)
 }
 #endif
 
+
 /*
  *********************************************************************************
  * Core Functions
@@ -1477,28 +1748,29 @@ void pinEnableED01Pi (int pin)
 void pinModeAlt (int pin, int mode)
 {
   int fSel, shift ;
-	if(version==3)
-	{
-		return ;
-	}
-	else
-	{
-		if ((pin & PI_GPIO_MASK) == 0)		// On-board pin
-		  {
-			/**/ if (wiringPiMode == WPI_MODE_PINS)
-			  pin = pinToGpio [pin] ;
-			else if (wiringPiMode == WPI_MODE_PHYS)
-			  pin = physToGpio [pin] ;
-			else if (wiringPiMode != WPI_MODE_GPIO)
-			  return ;
+ /*add for BananaPro by LeMaker team*/
+  if (BPRVER == version)
+  {
+  		return;
+  }
+ /*end 2014.08.19*/
+ 
+  if ((pin & PI_GPIO_MASK) == 0)		// On-board pin
+  {
+    /**/ if (wiringPiMode == WPI_MODE_PINS)
+      pin = pinToGpio [pin] ;
+    else if (wiringPiMode == WPI_MODE_PHYS)
+      pin = physToGpio [pin] ;
+    else if (wiringPiMode != WPI_MODE_GPIO)
+      return ;
 
-			fSel  = gpioToGPFSEL [pin] ;
-			shift = gpioToShift  [pin] ;
+    fSel  = gpioToGPFSEL [pin] ;
+    shift = gpioToShift  [pin] ;
 
-			*(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | ((mode & 0x7) << shift) ;
-		  }
-	}
+    *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | ((mode & 0x7) << shift) ;
+  }
 }
+
 
 /*
  * pinMode:
@@ -1511,7 +1783,9 @@ void pinMode (int pin, int mode)
   int    fSel, shift, alt ;
   struct wiringPiNodeStruct *node = wiringPiNodes ;
   int origPin = pin ;
-	if(version==3)
+	
+/*add for BananaPro by LeMaker team*/
+ if(BPRVER == version )
 	{
 		if (wiringPiDebug)
 			printf ("%s,%d,pin:%d,mode:%d\n", __func__, __LINE__,pin,mode) ;
@@ -1524,6 +1798,13 @@ void pinMode (int pin, int mode)
 				else if (wiringPiMode == WPI_MODE_GPIO)
 						pin=pinTobcm_BP[pin];//need map A20 to bcm
 				else return ;
+				
+				if (-1 == pin)  /*VCC or GND return directly*/
+				{
+					//printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+					return;
+				}
+				
 				 if (mode == INPUT)
 				 {
 					  sunxi_set_gpio_mode(pin,INPUT);
@@ -1578,61 +1859,71 @@ void pinMode (int pin, int mode)
 		return ;
 	  }
 	}
-	else
-	{
-		  if ((pin & PI_GPIO_MASK) == 0)		// On-board pin
-		  {
-			/**/ if (wiringPiMode == WPI_MODE_PINS)
-			  pin = pinToGpio [pin] ;
-			else if (wiringPiMode == WPI_MODE_PHYS)
-			  pin = physToGpio [pin] ;
-			else if (wiringPiMode != WPI_MODE_GPIO)
-			  return ;
+ /*end 2014.08.19*/
+ 
+  if ((pin & PI_GPIO_MASK) == 0)		// On-board pin
+  {
+    /**/ if (wiringPiMode == WPI_MODE_PINS)
+      pin = pinToGpio [pin] ;
+    else if (wiringPiMode == WPI_MODE_PHYS)
+      pin = physToGpio [pin] ;
+    else if (wiringPiMode != WPI_MODE_GPIO)
+      return ;
 
-			
+    softPwmStop  (origPin) ;
+    softToneStop (origPin) ;
 
-			fSel    = gpioToGPFSEL [pin] ;
-			shift   = gpioToShift  [pin] ;
+    fSel    = gpioToGPFSEL [pin] ;
+    shift   = gpioToShift  [pin] ;
 
-			/**/ if (mode == INPUT)
-			  *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) ; // Sets bits to zero = input
-			else if (mode == OUTPUT)
-			  *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | (1 << shift) ;
-			
-			else if (mode == PWM_OUTPUT)
-			{
-			  if ((alt = gpioToPwmALT [pin]) == 0)	//Not a PWM pin
-			return ;
+    /**/ if (mode == INPUT)
+      *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) ; // Sets bits to zero = input
+    else if (mode == OUTPUT)
+      *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | (1 << shift) ;
+    else if (mode == SOFT_PWM_OUTPUT)
+      softPwmCreate (origPin, 0, 100) ;
+    else if (mode == SOFT_TONE_OUTPUT)
+      softToneCreate (origPin) ;
+    else if (mode == PWM_TONE_OUTPUT)
+    {
+      pinMode (origPin, PWM_OUTPUT) ;	// Call myself to enable PWM mode
+      pwmSetMode (PWM_MODE_MS) ;
+    }
+    else if (mode == PWM_OUTPUT)
+    {
+      if ((alt = gpioToPwmALT [pin]) == 0)	// Not a hardware capable PWM pin
+	return ;
 
-		// Set pin to PWM mode
+// Set pin to PWM mode
 
-			  *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | (alt << shift) ;
-			  delayMicroseconds (110) ;		// See comments in pwmSetClockWPi
+      *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | (alt << shift) ;
+      delayMicroseconds (110) ;		// See comments in pwmSetClockWPi
 
-			  pwmSetMode  (PWM_MODE_BAL) ;	// Pi default mode
-			  pwmSetRange (1024) ;		// Default range of 1024
-			  pwmSetClock (32) ;		// 19.2 / 32 = 600KHz - Also starts the PWM
-			}
-			else if (mode == GPIO_CLOCK)
-			{
-			  if ((alt = gpioToGpClkALT0 [pin]) == 0)	// Not a GPIO_CLOCK pin
-			return ;
+      pwmSetMode  (PWM_MODE_BAL) ;	// Pi default mode
+      pwmSetRange (1024) ;		// Default range of 1024
+      pwmSetClock (32) ;		// 19.2 / 32 = 600KHz - Also starts the PWM
+    }
+    else if (mode == GPIO_CLOCK)
+    {
+      if ((alt = gpioToGpClkALT0 [pin]) == 0)	// Not a GPIO_CLOCK pin
+	return ;
 
-		// Set pin to GPIO_CLOCK mode and set the clock frequency to 100KHz
+// Set pin to GPIO_CLOCK mode and set the clock frequency to 100KHz
 
-			  *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | (alt << shift) ;
-			  delayMicroseconds (110) ;
-			  gpioClockSet      (pin, 100000) ;
-			}
-		  }
-		  else
-		  {
-			if ((node = wiringPiFindNode (pin)) != NULL)
-			  node->pinMode (node, pin, mode) ;
-			return ;
-		  }
-	}
+      *(gpio + fSel) = (*(gpio + fSel) & ~(7 << shift)) | (alt << shift) ;
+      delayMicroseconds (110) ;
+      gpioClockSet      (pin, 100000) ;
+    }
+  }
+  else
+  {
+    if ((node = wiringPiFindNode (pin)) != NULL)
+      node->pinMode (node, pin, mode) ;
+    return ;
+  }
 }
+
+
 /*
  * pullUpDownCtrl:
  *	Control the internal pull-up/down resistors on a GPIO pin
@@ -1645,7 +1936,9 @@ void pinMode (int pin, int mode)
 void pullUpDnControl (int pin, int pud)
 {
   struct wiringPiNodeStruct *node = wiringPiNodes ;
-	if(version==3)
+	
+/*add for BananaPro by LeMaker team*/
+if(BPRVER == version)
 	{
 		if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
 		  {
@@ -1658,41 +1951,50 @@ void pullUpDnControl (int pin, int pud)
 				else return ;
 				if (wiringPiDebug)
 					printf ("%s,%d,pin:%d\n", __func__, __LINE__,pin) ;
+
+				if (-1 == pin)
+				{
+					printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+					return;
+				}
+
 				pud &= 3 ;
 				sunxi_pullUpDnControl(pin, pud);
+				return;
 		  }
-		  else						// Extension module
+		else	// Extension module
 		  {
 			if ((node = wiringPiFindNode (pin)) != NULL)
 			  node->pullUpDnControl (node, pin, pud) ;
 			return ;
 		  }
 	  }
-	else
-	{
-		  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
-		  {
-			/**/ if (wiringPiMode == WPI_MODE_PINS)
-			  pin = pinToGpio [pin] ;
-			else if (wiringPiMode == WPI_MODE_PHYS)
-			  pin = physToGpio [pin] ;
-			else if (wiringPiMode != WPI_MODE_GPIO)
-			  return ;
+/*end 2014.08.19*/
 
-			*(gpio + GPPUD)              = pud & 3 ;		delayMicroseconds (5) ;
-			*(gpio + gpioToPUDCLK [pin]) = 1 << (pin & 31) ;	delayMicroseconds (5) ;
-			
-			*(gpio + GPPUD)              = 0 ;			delayMicroseconds (5) ;
-			*(gpio + gpioToPUDCLK [pin]) = 0 ;			delayMicroseconds (5) ;
-		  }
-		  else						// Extension module
-		  {
-			if ((node = wiringPiFindNode (pin)) != NULL)
-			  node->pullUpDnControl (node, pin, pud) ;
-			return ;
-		  }
-	}
+  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
+  {
+    /**/ if (wiringPiMode == WPI_MODE_PINS)
+      pin = pinToGpio [pin] ;
+    else if (wiringPiMode == WPI_MODE_PHYS)
+      pin = physToGpio [pin] ;
+    else if (wiringPiMode != WPI_MODE_GPIO)
+      return ;
+
+    *(gpio + GPPUD)              = pud & 3 ;		delayMicroseconds (5) ;
+    *(gpio + gpioToPUDCLK [pin]) = 1 << (pin & 31) ;	delayMicroseconds (5) ;
+    
+    *(gpio + GPPUD)              = 0 ;			delayMicroseconds (5) ;
+    *(gpio + gpioToPUDCLK [pin]) = 0 ;			delayMicroseconds (5) ;
+  }
+  else						// Extension module
+  {
+    if ((node = wiringPiFindNode (pin)) != NULL)
+      node->pullUpDnControl (node, pin, pud) ;
+    return ;
+  }
 }
+
+
 /*
  * digitalRead:
  *	Read the value of a given Pin, returning HIGH or LOW
@@ -1703,7 +2005,9 @@ int digitalRead (int pin)
 {
   char c ;
   struct wiringPiNodeStruct *node = wiringPiNodes ;
-	if(version==3)
+	
+	/*add for BananaPro by LeMaker team*/
+	if(BPRVER == version)
 	{
 		if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
 			  {
@@ -1741,7 +2045,7 @@ int digitalRead (int pin)
 				else 
 				  return LOW ;
 				 if(-1 == pin){
-					//printf("%d %s,%d invalid pin,please check it over.\n",pin,__func__, __LINE__);
+					printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
 					return LOW;
 					}
 				return sunxi_digitalRead(pin);
@@ -1753,40 +2057,40 @@ int digitalRead (int pin)
 			return node->digitalRead (node, pin) ;
 		  }
 	  }
-	else
-	{
-	  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
-	  {
-		/**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)	// Sys mode
-		{
-		  if (sysFds [pin] == -1)
-		return LOW ;
-
-		  lseek  (sysFds [pin], 0L, SEEK_SET) ;
-		  read   (sysFds [pin], &c, 1) ;
-		  return (c == '0') ? LOW : HIGH ;
-		}
-		else if (wiringPiMode == WPI_MODE_PINS)
-		  pin = pinToGpio [pin] ;
-		else if (wiringPiMode == WPI_MODE_PHYS)
-		  pin = physToGpio [pin] ;
-		else if (wiringPiMode != WPI_MODE_GPIO)
-		  return LOW ;
-
-		if ((*(gpio + gpioToGPLEV [pin]) & (1 << (pin & 31))) != 0)
-		  return HIGH ;
-		else
-		  return LOW ;
-	  }
-	  else
-	  {
-		if ((node = wiringPiFindNode (pin)) == NULL)
-		  return LOW ;
-		return node->digitalRead (node, pin) ;
-	  }
-	}
+	/*end 2014.08.19*/
 	
+  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
+  {
+    /**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)	// Sys mode
+    {
+      if (sysFds [pin] == -1)
+	return LOW ;
+
+      lseek  (sysFds [pin], 0L, SEEK_SET) ;
+      read   (sysFds [pin], &c, 1) ;
+      return (c == '0') ? LOW : HIGH ;
+    }
+    else if (wiringPiMode == WPI_MODE_PINS)
+      pin = pinToGpio [pin] ;
+    else if (wiringPiMode == WPI_MODE_PHYS)
+      pin = physToGpio [pin] ;
+    else if (wiringPiMode != WPI_MODE_GPIO)
+      return LOW ;
+
+    if ((*(gpio + gpioToGPLEV [pin]) & (1 << (pin & 31))) != 0)
+      return HIGH ;
+    else
+      return LOW ;
+  }
+  else
+  {
+    if ((node = wiringPiFindNode (pin)) == NULL)
+      return LOW ;
+    return node->digitalRead (node, pin) ;
+  }
 }
+
+
 /*
  * digitalWrite:
  *	Set an output bit
@@ -1795,8 +2099,9 @@ int digitalRead (int pin)
 
 void digitalWrite (int pin, int value)
 {
-	 struct wiringPiNodeStruct *node = wiringPiNodes ;
-	if(version==3)
+  struct wiringPiNodeStruct *node = wiringPiNodes ;
+  /*add for BananaPro by LeMaker team*/
+	if(BPRVER == version)
 	{	
 		if (wiringPiDebug)
 		printf ("%s,%d\n", __func__, __LINE__) ;
@@ -1842,7 +2147,7 @@ void digitalWrite (int pin, int value)
 					    pin=pinTobcm_BP[pin];//need map A20 to bcm
 					else  return ;
 				   if(-1 == pin){
-						//printf("%d %s,%d %d invalid pin,please check it over.\n",pin,__func__, __LINE__,wiringPiMode);
+						//printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
 						return ;
 					}
 					sunxi_digitalWrite(pin, value);		
@@ -1852,41 +2157,43 @@ void digitalWrite (int pin, int value)
 			if ((node = wiringPiFindNode (pin)) != NULL)
 			  node->digitalWrite (node, pin, value) ;
 		  }
+		  return;
 	  }
-	else
-	{
-		   if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
-		  {
-			/**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)	// Sys mode
-			{
-			  if (sysFds [pin] != -1)
-			  {
-			if (value == LOW)
-			  write (sysFds [pin], "0\n", 2) ;
-			else
-			  write (sysFds [pin], "1\n", 2) ;
-			  }
-			  return ;
-			}
-			else if (wiringPiMode == WPI_MODE_PINS)
-			  pin = pinToGpio [pin] ;
-			else if (wiringPiMode == WPI_MODE_PHYS)
-			  pin = physToGpio [pin] ;
-			else if (wiringPiMode != WPI_MODE_GPIO)
-			  return ;
+	/*end 2014.08.19*/
 
-			if (value == LOW)
-			  *(gpio + gpioToGPCLR [pin]) = 1 << (pin & 31) ;
-			else
-			  *(gpio + gpioToGPSET [pin]) = 1 << (pin & 31) ;
-		  }
-		  else
-		  {
-			if ((node = wiringPiFindNode (pin)) != NULL)
-			  node->digitalWrite (node, pin, value) ;
-		  }
-	 }
+  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
+  {
+    /**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)	// Sys mode
+    {
+      if (sysFds [pin] != -1)
+      {
+	if (value == LOW)
+	  write (sysFds [pin], "0\n", 2) ;
+	else
+	  write (sysFds [pin], "1\n", 2) ;
+      }
+      return ;
+    }
+    else if (wiringPiMode == WPI_MODE_PINS)
+      pin = pinToGpio [pin] ;
+    else if (wiringPiMode == WPI_MODE_PHYS)
+      pin = physToGpio [pin] ;
+    else if (wiringPiMode != WPI_MODE_GPIO)
+      return ;
+
+    if (value == LOW)
+      *(gpio + gpioToGPCLR [pin]) = 1 << (pin & 31) ;
+    else
+      *(gpio + gpioToGPSET [pin]) = 1 << (pin & 31) ;
+  }
+  else
+  {
+    if ((node = wiringPiFindNode (pin)) != NULL)
+      node->digitalWrite (node, pin, value) ;
+  }
 }
+
+
 /*
  * pwmWrite:
  *	Set an output PWM value
@@ -1896,8 +2203,9 @@ void digitalWrite (int pin, int value)
 void pwmWrite (int pin, int value)
 {
   struct wiringPiNodeStruct *node = wiringPiNodes ;
-
-	if(version==3)
+	
+ /*add for BananaPro by LeMaker team*/
+	if(BPRVER == version)
 	{	
 		 uint32_t a_val = 0;
 		 if(pwmmode==1)//sycle
@@ -1919,7 +2227,7 @@ void pwmWrite (int pin, int value)
 		  else
 		   return ;
 			if(-1 == pin){
-				//printf("%d %s,%d invalid pin,please check it over.\n",pin,__func__, __LINE__);
+				printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
 				return ;
 				}
 		  if(pin != 259){
@@ -1948,27 +2256,29 @@ void pwmWrite (int pin, int value)
 		 }
 		   if (wiringPiDebug)
 		  printf ("this fun is ok now %s,%d\n", __func__, __LINE__) ;
+		 
+		 return;
   }
- else
- {
-	  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
-	  {
-		/**/ if (wiringPiMode == WPI_MODE_PINS)
-		  pin = pinToGpio [pin] ;
-		else if (wiringPiMode == WPI_MODE_PHYS)
-		  pin = physToGpio [pin] ;
-		else if (wiringPiMode != WPI_MODE_GPIO)
-		  return ;
+ /*end 2014.08.19*/	
+ 
+  if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
+  {
+    /**/ if (wiringPiMode == WPI_MODE_PINS)
+      pin = pinToGpio [pin] ;
+    else if (wiringPiMode == WPI_MODE_PHYS)
+      pin = physToGpio [pin] ;
+    else if (wiringPiMode != WPI_MODE_GPIO)
+      return ;
 
-		*(pwm + gpioToPwmPort [pin]) = value ;
-	  }
-	  else
-	  {
-		if ((node = wiringPiFindNode (pin)) != NULL)
-		  node->pwmWrite (node, pin, value) ;
-	  }
+    *(pwm + gpioToPwmPort [pin]) = value ;
+  }
+  else
+  {
+    if ((node = wiringPiFindNode (pin)) != NULL)
+      node->pwmWrite (node, pin, value) ;
   }
 }
+
 
 /*
  * analogRead:
@@ -2006,6 +2316,31 @@ void analogWrite (int pin, int value)
 
   node->analogWrite (node, pin, value) ;
 }
+
+
+/*
+ * pwmToneWrite:
+ *	Pi Specific.
+ *      Output the given frequency on the Pi's PWM pin
+ *********************************************************************************
+ */
+
+void pwmToneWrite (int pin, int freq)
+{
+  int range ;
+
+  if (freq == 0)
+    pwmWrite (pin, 0) ;             // Off
+  else
+  {
+    range = 600000 / freq ;
+    pwmSetRange (range) ;
+    pwmWrite    (pin, freq / 2) ;
+  }
+}
+
+
+
 /*
  * digitalWriteByte:
  *	Pi Specific
@@ -2016,16 +2351,17 @@ void analogWrite (int pin, int value)
  *	to set the outputs bits to zero, then another change to set the 1's
  *********************************************************************************
  */
-static int head2win[8]={11,12,13,15,16,18,22,7};
+static int head2win[8]={11,12,13,15,16,18,22,7}; /*add for BananaPro by lemaker team*/
 void digitalWriteByte (int value)
 {
   uint32_t pinSet = 0 ;
   uint32_t pinClr = 0 ;
   int mask = 1 ;
   int pin ;
-	if(version==3)
+
+ /*add for BananaPro by LeMaker team*/
+ 	if(BPRVER == version)
 	{
-		
 		if (wiringPiMode == WPI_MODE_GPIO_SYS||wiringPiMode == WPI_MODE_GPIO)
 		{
 			
@@ -2063,34 +2399,35 @@ void digitalWriteByte (int value)
 		}
 		return ;
 	}
-	else
-	{
-	  /**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)
-	  {
-		for (pin = 0 ; pin < 8 ; ++pin)
-		{
-		  digitalWrite (pin, value & mask) ;
-		  mask <<= 1 ;
-		}
-		return ;
-	  }
-	  else
-	  {
-		for (pin = 0 ; pin < 8 ; ++pin)
-		{
-		  if ((value & mask) == 0)
-		pinClr |= (1 << pinToGpio [pin]) ;
-		  else
-		pinSet |= (1 << pinToGpio [pin]) ;
+ /*end 2014.08.19*/
+ 
+  /**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)
+  {
+    for (pin = 0 ; pin < 8 ; ++pin)
+    {
+      digitalWrite (pin, value & mask) ;
+      mask <<= 1 ;
+    }
+    return ;
+  }
+  else
+  {
+    for (pin = 0 ; pin < 8 ; ++pin)
+    {
+      if ((value & mask) == 0)
+	pinClr |= (1 << pinToGpio [pin]) ;
+      else
+	pinSet |= (1 << pinToGpio [pin]) ;
 
-		  mask <<= 1 ;
-		}
+      mask <<= 1 ;
+    }
 
-		*(gpio + gpioToGPCLR [0]) = pinClr ;
-		*(gpio + gpioToGPSET [0]) = pinSet ;
-	  }
+    *(gpio + gpioToGPCLR [0]) = pinClr ;
+    *(gpio + gpioToGPSET [0]) = pinSet ;
   }
 }
+
+
 /*
  * waitForInterrupt:
  *	Pi Specific.
@@ -2188,11 +2525,22 @@ int wiringPiISR (int pin, int mode, void (*function)(void))
     bcmGpioPin = physToGpio [pin] ;
   else
     bcmGpioPin = pin ;
-	if(version==3)
+
+	/*add for BananaPro by LeMaker team*/
+	
+	if(BPRVER == version)
 	{
+		if(-1 == bcmGpioPin)  /**/
+		{
+			printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+			return -1;
+		}
+		
 		if(edge[bcmGpioPin]==-1)
 		return wiringPiFailure (WPI_FATAL, "wiringPiISR: pin not sunpprt on bananaPi (%d,%d)\n", pin,bcmGpioPin) ;
 	}
+	/*end 2014.08.19*/
+	
 // Now export the pin and set the right edge
 //	We're going to use the gpio program to do this, so it assumes
 //	a full installation of wiringPi. It's a bit 'clunky', but it
@@ -2215,8 +2563,18 @@ int wiringPiISR (int pin, int mode, void (*function)(void))
 
     if (pid == 0)	// Child, exec
     {
-      execl ("/usr/local/bin/gpio", "gpio", "edge", pinS, modeS, (char *)NULL) ;
-      return wiringPiFailure (WPI_FATAL, "wiringPiISR: execl failed: %s\n", strerror (errno)) ;
+      /**/ if (access ("/usr/local/bin/gpio", X_OK) == 0)
+      {
+	execl ("/usr/local/bin/gpio", "gpio", "edge", pinS, modeS, (char *)NULL) ;
+	return wiringPiFailure (WPI_FATAL, "wiringPiISR: execl failed: %s\n", strerror (errno)) ;
+      }
+      else if (access ("/usr/bin/gpio", X_OK) == 0)
+      {
+	execl ("/usr/bin/gpio", "gpio", "edge", pinS, modeS, (char *)NULL) ;
+	return wiringPiFailure (WPI_FATAL, "wiringPiISR: execl failed: %s\n", strerror (errno)) ;
+      }
+      else
+	return wiringPiFailure (WPI_FATAL, "wiringPiISR: Can't find gpio program\n") ;
     }
     else		// Parent, wait
       wait (NULL) ;
@@ -2369,19 +2727,24 @@ unsigned int micros (void)
 
   return (uint32_t)(now - epochMicro) ;
 }
+
+
 /*
  * wiringPiSetup:
  *	Must be called once at the start of your program execution.
  *
  * Default setup: Initialises the system into wiringPi Pin mode and uses the
  *	memory mapped hardware directly.
+ *
+ * Changed now to revert to "gpio" mode if we're running on a Compute Module.
  *********************************************************************************
  */
 
 int wiringPiSetup (void)
 {
-  int      fd ;
-  int      boardRev ;
+  int   fd ;
+  int   boardRev ;
+  int   model, rev, mem, maker, overVolted ;
 
   if (getenv (ENV_DEBUG) != NULL)
     wiringPiDebug = TRUE ;
@@ -2394,37 +2757,37 @@ int wiringPiSetup (void)
 
   if (wiringPiDebug)
     printf ("wiringPi: wiringPiSetup called\n") ;
-	
-	boardRev = piBoardRev() ;
-	if(boardRev == 3)
-	{
-		pinToGpio =  pinToGpioR2 ;
-		physToGpio = physToGpioR3 ;
-	}
-	else
-	{
-	  
 
-	  if (boardRev == 1)
+  boardRev = piBoardRev () ;
+	
+  if (BPRVER == boardRev)  /*modify for BananaPro by LeMaker team*/
+  {
+  	 	pinToGpio =  pinToGpioR3 ;
+		physToGpio = physToGpioR3 ;
+		physToPin = physToPinR3;
+  }
+  else
+  {
+	  /**/ if (boardRev == 1)	// A, B, Rev 1, 1.1
 	  {
-		 pinToGpio =  pinToGpioR1 ;
-		physToGpio = physToGpioR1 ;
+	     pinToGpio =  pinToGpioR1 ;
+	    physToGpio = physToGpioR1 ;
 	  }
-	  else
+	  else 				// A, B, Rev 2, B+, CM
 	  {
-		 pinToGpio =  pinToGpioR2 ;
-		physToGpio = physToGpioR2 ;
+	     pinToGpio =  pinToGpioR2 ;
+	    physToGpio = physToGpioR2 ;
 	  }
-	}
+  }
+	
 // Open the master /dev/memory device
 
   if ((fd = open ("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC) ) < 0)
     return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: Unable to open /dev/mem: %s\n", strerror (errno)) ;
-		
-		if(boardRev == 3)
-		{
-			// GPIO:
 
+	if (BPRVER == boardRev)  /*modify for BananaPro by LeMaker team*/
+	{
+			// GPIO:
 			  gpio = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_BASE_BP);
 				//if (wiringPiDebug)
 				//	printf("++++ gpio:0x%x\n", gpio);
@@ -2466,53 +2829,58 @@ int wiringPiSetup (void)
 			  *(timer + TIMER_CONTROL) = 0x0000280 ;
 			  *(timer + TIMER_PRE_DIV) = 0x00000F9 ;
 			  timerIrqRaw = timer + TIMER_IRQ_RAW ;
-			#endif
+			#endif		
+	}
+	else
+	{
+		// GPIO:
+		  gpio = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_BASE) ;
+		  if ((int32_t)gpio == -1)
+		    return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (GPIO) failed: %s\n", strerror (errno)) ;
+
+		// PWM
+
+		  pwm = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_PWM) ;
+		  if ((int32_t)pwm == -1)
+		    return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (PWM) failed: %s\n", strerror (errno)) ;
+		 
+		// Clock control (needed for PWM)
+
+		  clk = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, CLOCK_BASE) ;
+		  if ((int32_t)clk == -1)
+		    return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (CLOCK) failed: %s\n", strerror (errno)) ;
+		 
+		// The drive pads
+
+		  pads = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_PADS) ;
+		  if ((int32_t)pads == -1)
+		    return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (PADS) failed: %s\n", strerror (errno)) ;
+
+#ifdef	USE_TIMER
+		// The system timer
+
+		  timer = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_TIMER) ;
+		  if ((int32_t)timer == -1)
+		    return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (TIMER) failed: %s\n", strerror (errno)) ;
+
+		// Set the timer to free-running, 1MHz.
+		//	0xF9 is 249, the timer divide is base clock / (divide+1)
+		//	so base clock is 250MHz / 250 = 1MHz.
+
+		  *(timer + TIMER_CONTROL) = 0x0000280 ;
+		  *(timer + TIMER_PRE_DIV) = 0x00000F9 ;
+		  timerIrqRaw = timer + TIMER_IRQ_RAW ;
+#endif
 		}
-		else
-		{
-			// GPIO:
+  initialiseEpoch () ;
 
-			  gpio = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_BASE) ;
-			  if ((int32_t)gpio == -1)
-				return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (GPIO) failed: %s\n", strerror (errno)) ;
+// If we're running on a compute module, then wiringPi pin numbers don't really many anything...
 
-			// PWM
-
-			  pwm = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_PWM) ;
-			  if ((int32_t)pwm == -1)
-				return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (PWM) failed: %s\n", strerror (errno)) ;
-			 
-			// Clock control (needed for PWM)
-
-			  clk = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, CLOCK_BASE) ;
-			  if ((int32_t)clk == -1)
-				return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (CLOCK) failed: %s\n", strerror (errno)) ;
-			 
-			// The drive pads
-
-			  pads = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_PADS) ;
-			  if ((int32_t)pads == -1)
-				return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (PADS) failed: %s\n", strerror (errno)) ;
-
-			#ifdef	USE_TIMER
-			// The system timer
-
-			  timer = (uint32_t *)mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, GPIO_TIMER) ;
-			  if ((int32_t)timer == -1)
-				return wiringPiFailure (WPI_ALMOST, "wiringPiSetup: mmap (TIMER) failed: %s\n", strerror (errno)) ;
-
-			// Set the timer to free-running, 1MHz.
-			//	0xF9 is 249, the timer divide is base clock / (divide+1)
-			//	so base clock is 250MHz / 250 = 1MHz.
-
-			  *(timer + TIMER_CONTROL) = 0x0000280 ;
-			  *(timer + TIMER_PRE_DIV) = 0x00000F9 ;
-			  timerIrqRaw = timer + TIMER_IRQ_RAW ;
-			#endif
-		}
-	initialiseEpoch () ;
-
-	wiringPiMode = WPI_MODE_PINS ;
+  piBoardId (&model, &rev, &mem, &maker, &overVolted) ;
+  if (model == PI_MODEL_CM)
+    wiringPiMode = WPI_MODE_GPIO ;
+  else
+    wiringPiMode = WPI_MODE_PINS ;
 
   return 0 ;
 }
@@ -2585,31 +2953,30 @@ int wiringPiSetupSys (void)
 
   if (wiringPiDebug)
     printf ("wiringPi: wiringPiSetupSys called\n") ;
-	boardRev = piBoardRev () ;
-	if(boardRev==3)
-	{
-		pinToGpio =  pinToGpioR2 ;
+
+  boardRev = piBoardRev () ;
+  if (BPRVER == boardRev)   /*modify for BananaPro by LeMaker team*/
+  {
+		pinToGpio =  pinToGpioR3 ;
 		physToGpio = physToGpioR3 ;
-	}
-	else
-	{
+		physToPin = physToPinR3;
+  }
+  else
+  {
 	  if (boardRev == 1)
 	  {
-		 pinToGpio =  pinToGpioR1 ;
-		physToGpio = physToGpioR1 ;
+	     pinToGpio =  pinToGpioR1 ;
+	    physToGpio = physToGpioR1 ;
 	  }
 	  else
 	  {
-		 pinToGpio =  pinToGpioR2 ;
-		physToGpio = physToGpioR2 ;
+	     pinToGpio =  pinToGpioR2 ;
+	    physToGpio = physToGpioR2 ;
 	  }
-	}
-
+  }
 // Open and scan the directory, looking for exported GPIOs, and pre-open
 //	the 'value' interface to speed things up for later
-  
-  //xzf_modify
-  if(boardRev==3)
+    if(BPRVER == boardRev)    /*modify for BananaPro by LeMaker team*/
 	{
 	  for (pin = 1 ; pin < 32 ; ++pin)
 	  {
@@ -2617,14 +2984,14 @@ int wiringPiSetupSys (void)
 		sysFds [pin] = open (fName, O_RDWR) ;
 	  }
 	}
-	else
-	{
-		 for (pin = 0 ; pin < 64 ; ++pin)
-		  {
-			sprintf (fName, "/sys/class/gpio/gpio%d/value", pin) ;
-			sysFds [pin] = open (fName, O_RDWR) ;
-		  }
-	}
+  else
+  {
+	  for (pin = 0 ; pin < 64 ; ++pin)
+	  {
+	    sprintf (fName, "/sys/class/gpio/gpio%d/value", pin) ;
+	    sysFds [pin] = open (fName, O_RDWR) ;
+	  }
+  }
   initialiseEpoch () ;
 
   wiringPiMode = WPI_MODE_GPIO_SYS ;
