@@ -619,6 +619,8 @@ static uint8_t gpioToClkDiv [] =
 
 static int *physToPin ;
 
+static int upDnConvert[3] = {7, 7, 5};
+
 static int pinToGpio_BP [64] =
 {
   275,259,
@@ -1831,24 +1833,6 @@ void pinMode (int pin, int mode)
 					  wiringPinMode = PWM_OUTPUT;
 					  return ;
 				}
-				else if (mode == PULLUP)
-				 {
-					  pullUpDnControl (origPin, 1);
-					  wiringPinMode = PULLUP;
-					  return ;
-				}
-				 else if (mode == PULLDOWN)
-				 {
-					  pullUpDnControl (origPin, 2);
-					  wiringPinMode = PULLDOWN;
-					  return ;
-				}
-				 else if (mode == PULLOFF)
-				 {
-				  pullUpDnControl (origPin, 0);
-				  wiringPinMode = PULLOFF;
-				  return ;
-				}
 				else
 					return ;
 		  }
@@ -1939,7 +1923,9 @@ void pullUpDnControl (int pin, int pud)
 	
 /*add for BananaPro by LeMaker team*/
 if(BPRVER == version)
-	{
+	{	
+ 		pud = upDnConvert[pud];
+		
 		if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
 		  {
 			   if (wiringPiMode == WPI_MODE_PINS)

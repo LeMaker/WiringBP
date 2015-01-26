@@ -46,11 +46,6 @@
 #define	SOFT_TONE_OUTPUT	 5
 #define	PWM_TONE_OUTPUT		 6
 
-/*add for BananaPro by LeMaker team*/
-#define	PULLUP		 	5
-#define	PULLDOWN		7
-#define	PULLOFF			7
-/*end 2014.09.18*/
 
 #define	LOW			 0
 #define	HIGH			 1

@@ -91,7 +91,7 @@ int bprTbIntInit(void)
 	 
 	  for(pinInt=0; pinInt<14; pinInt++)  //enable the pull up
 	  {
-	  		pullUpDnControl(ARRAY_INT[pinInt], PULLUP);
+	  		pullUpDnControl(ARRAY_INT[pinInt], PUD_UP);
 	  }
   
 	  wiringPiISR (7, INT_EDGE_FALLING, &myInterrupt1) ;
