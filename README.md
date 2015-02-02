@@ -9,7 +9,7 @@ https://github.com/LeMaker/WiringBP.git.
 ## Download
 ### For Banana Pro
     git clone https://github.com/LeMaker/WiringBP.git -b bananapro
-### For Banana Pro
+### For Banana Pi
     git clone https://github.com/LeMaker/WiringBP.git -b bananapi
 ## Installation
     cd WiringBP
