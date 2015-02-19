@@ -44,10 +44,6 @@
 #define	GPIO_CLOCK		 3
 #define	SOFT_PWM_OUTPUT		 4
 
-#define	PULLUP		 	5
-#define	PULLDOWN		7
-#define	PULLOFF			7
-
 #define	LOW			 0
 #define	HIGH			 1
 

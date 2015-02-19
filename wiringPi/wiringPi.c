@@ -558,6 +558,8 @@ int wiringPiCodes = FALSE ;
 /*
 	map tableb for BP
 */
+static int upDnConvert[3] = {7, 7, 5};
+
 static int pinToGpio_BP [64] =
 {
   275,226,
@@ -1550,24 +1552,6 @@ void pinMode (int pin, int mode)
 					  wiringPinMode = PWM_OUTPUT;
 					  return ;
 				}
-				else if (mode == PULLUP)
-				 {
-					  pullUpDnControl (origPin, 1);
-					  wiringPinMode = PULLUP;
-					  return ;
-				}
-				 else if (mode == PULLDOWN)
-				 {
-					  pullUpDnControl (origPin, 2);
-					  wiringPinMode = PULLDOWN;
-					  return ;
-				}
-				 else if (mode == PULLOFF)
-				 {
-				  pullUpDnControl (origPin, 0);
-				  wiringPinMode = PULLOFF;
-				  return ;
-				}
 				else
 					return ;
 		  }
@@ -1647,6 +1631,8 @@ void pullUpDnControl (int pin, int pud)
   struct wiringPiNodeStruct *node = wiringPiNodes ;
 	if(version==3)
 	{
+		pud = upDnConvert[pud];
+
 		if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
 		  {
 			   if (wiringPiMode == WPI_MODE_PINS)
