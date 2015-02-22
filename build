@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# check if sudo is required and save the result as ${PFX}:
+[[ ${EUID} -ne 0 ]] && PFX='sudo ' || PFX=''
+
 check_make_ok() {
   if [ $? != 0 ]; then
     echo ""
@@ -34,11 +37,11 @@ fi
 
 if [ x$1 = "xuninstall" ]; then
   cd wiringPi
-  echo -n "wiringPi: " ; sudo make uninstall
+  echo -n "wiringPi: " ; ${PFX}make uninstall
   cd ../devLib
-  echo -n "DevLib:   " ; sudo make uninstall
+  echo -n "DevLib:   " ; ${PFX}make uninstall
   cd ../gpio
-  echo -n "gpio:     " ; sudo make uninstall
+  echo -n "gpio:     " ; ${PFX}make uninstall
   exit
 fi
 
@@ -50,30 +53,30 @@ fi
   echo
   echo "WiringPi Library"
   cd wiringPi
-  sudo make uninstall
+  ${PFX}make uninstall
   if [ x$1 = "xstatic" ]; then
     make static
     check_make_ok
-    sudo make install-static
+    ${PFX}make install-static
   else
     make
     check_make_ok
-    sudo make install
+    ${PFX}make install
   fi
   check_make_ok
 
   echo
   echo "WiringPi Devices Library"
   cd ../devLib
-  sudo make uninstall
+  ${PFX}make uninstall
   if [ x$1 = "xstatic" ]; then
     make static
     check_make_ok
-    sudo make install-static
+    ${PFX}make install-static
   else
     make
     check_make_ok
-    sudo make install
+    ${PFX}make install
   fi
   check_make_ok
 
@@ -82,7 +85,7 @@ fi
   cd ../gpio
   make
   check_make_ok
-  sudo make install
+  ${PFX}make install
   check_make_ok
 
 # echo
