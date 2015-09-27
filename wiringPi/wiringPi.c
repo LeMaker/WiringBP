@@ -2321,7 +2321,7 @@ void pwmToneWrite (int pin, int freq)
   {
     range = 600000 / freq ;
     pwmSetRange (range) ;
-    pwmWrite    (pin, freq / 2) ;
+    pwmWrite    (pin, range / 2) ;
   }
 }
 
