@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # check if sudo is required and save the result as ${PFX}:
 [[ ${EUID} -ne 0 ]] && PFX='sudo ' || PFX=''
