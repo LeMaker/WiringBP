@@ -47,7 +47,7 @@ SRC	=	wiringPi.c						\
 		wiringSerial.c wiringShift.c				\
 		piHiPri.c piThread.c					\
 		wiringPiSPI.c wiringPiI2C.c				\
-		softPwm.c softTone.c					\
+		softPwm.c softTone.c softServo.c					\
 		mcp23008.c mcp23016.c mcp23017.c			\
 		mcp23s08.c mcp23s17.c					\
 		sr595.c							\
@@ -97,6 +97,7 @@ install-headers:
 	@install -m 0644 wiringShift.h		$(DESTDIR)$(PREFIX)/include
 	@install -m 0644 softPwm.h		$(DESTDIR)$(PREFIX)/include
 	@install -m 0644 softTone.h		$(DESTDIR)$(PREFIX)/include
+	@install -m 0644 softServo.h		$(DESTDIR)$(PREFIX)/include
 	@install -m 0644 wiringPiSPI.h		$(DESTDIR)$(PREFIX)/include
 	@install -m 0644 wiringPiI2C.h		$(DESTDIR)$(PREFIX)/include
 	@install -m 0644 drcSerial.h		$(DESTDIR)$(PREFIX)/include
@@ -138,6 +139,7 @@ uninstall:
 	@rm -f $(DESTDIR)$(PREFIX)/include/wiringShift.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/softPwm.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/softTone.h
+	@rm -f $(DESTDIR)$(PREFIX)/include/softServo.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/wiringPiSPI.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/wiringPiI2C.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/drcSerial.h
@@ -175,6 +177,7 @@ wiringPiSPI.o: wiringPi.h wiringPiSPI.h
 wiringPiI2C.o: wiringPi.h wiringPiI2C.h
 softPwm.o: wiringPi.h softPwm.h
 softTone.o: wiringPi.h softTone.h
+softServo.o: wiringPi.h softServo.h
 mcp23008.o: wiringPi.h wiringPiI2C.h mcp23x0817.h mcp23008.h
 mcp23016.o: wiringPi.h wiringPiI2C.h mcp23016.h mcp23016reg.h
 mcp23017.o: wiringPi.h wiringPiI2C.h mcp23x0817.h mcp23017.h

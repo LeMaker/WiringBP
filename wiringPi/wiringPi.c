@@ -291,7 +291,7 @@ static pthread_mutex_t pinMutex ;
 
 // Debugging & Return codes
 
-int wiringPiDebug       = FALSE ;
+int wiringPiDebug       = FALSE;  // guenter FALSE ;
 int wiringPiReturnCodes = FALSE ;
 
 // sysFds:
@@ -621,7 +621,7 @@ static int *physToPin ;
 
 static int upDnConvert[3] = {7, 7, 5};
 
-static int pinToGpio_BP [64] =
+/* guenter static int pinToGpio_BP [64] =
 {
   275,259,
  274,273,
@@ -642,8 +642,39 @@ static int pinToGpio_BP [64] =
 
  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,// ... 63
-} ;
+} ; guenter ende */ 
 
+// WiringPiNr. gegeben .. -> Array GPIOx orange pi guenter neu
+// A ab 0x00, B ab 0x20, C ab 0x40, D ab 0x50 ......
+// 00 - 31 = PA00-PA31
+// 32 - 63 = PB00-PB31
+// 64 - 95 = PC00-PC31
+static int pinToGpio_BP [64] =
+{
+  -1,110,
+ -1,-1,
+ 68,71,
+ -1,7,
+ 8,200,
+ 9,-1,
+ 10,201,
+ 20,198,
+ 199, -1,
+ -1, -1,
+ -1, -1, 
+ -1, -1, 
+ -1, -1, 
+ -1, -1, 
+ -1,-1,
+ -1,-1,      // ...31
+
+ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,// ... 63
+} ;
+// guenter neu ende
+
+
+// guenter ... dieses braucht nicht umgewandelt werden, da kein /sys/class/gpio auf orange pi
 static int pinTobcm_BP [64] =
 {
  257,256,   //map to BCM GPIO0,1
@@ -665,6 +696,7 @@ static int pinTobcm_BP [64] =
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //45... 60
   -1, -1, -1, -1                                                                   // ...63
 } ;
+/* guenter 
 static int physToGpio_BP [64] =
 {
   -1,          // 0
@@ -691,6 +723,37 @@ static int physToGpio_BP [64] =
    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //41-> 55
    -1, -1, -1, -1, -1, -1, -1, -1 // 56-> 63
 } ;
+guenter ende */
+
+//guenter anfang 
+static int physToGpio_BP [64] =
+{
+  -1,          // 0
+  -1,     -1,     //1, 2
+   -1,    -1,     //3, 4
+   -1,    -1,     //5, 6
+   -1,    -1,   //7, 8
+  -1,     -1,   //9, 10
+  -1,   110,   //11, 12
+  -1,   -1,     //13, 14
+  -1,   68,   //15, 16
+  -1,     71,   //17, 18
+  -1,   -1,     //19, 20
+  -1,  -1,   //21, 22
+  -1,   -1,   //23, 24
+  -1,    -1,   //25, 26
+  -1,   -1,  //27, 28
+  7,    -1,    //29, 30
+  8,  200,   //31, 32      
+  9,   -1,      //33, 34
+  10,   201,    //35, 36
+  20,   198,     //37, 38
+  -1,   199,    //39, 40
+   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //41-> 55
+   -1, -1, -1, -1, -1, -1, -1, -1 // 56-> 63
+} ;
+// guenter ende
+
 
 
 static int syspin [64] =
@@ -791,6 +854,7 @@ static int physToPinR3 [64] = //return wiringPI pin
   -1, -1, -1, -1, -1, -1, -1, 	// ... 63
 } ;
 
+/* guenter raus
 static int BP_PIN_MASK[9][32] =  //[BANK]  [INDEX]
 {
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PA
@@ -803,6 +867,24 @@ static int BP_PIN_MASK[9][32] =  //[BANK]  [INDEX]
  {-1,-1,  2,-1, 4,  5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PH
  {0,1,-1,3,-1,-1,-1,-1,-1,-1,10,11,12,13,14,-1,16,17,18,19,20,21,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PI
 };
+ guenter ende */ 
+
+// guenter anfang ... welche pins werden freigegeben .. -1 = gesperrt
+static int BP_PIN_MASK[9][32] =  //[BANK]  [INDEX]
+{
+ {-1,-1,-1,-1,-1,-1,-1, 7, 8, 9,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PA
+ {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PB
+ {-1,-1,-1,-1, 4,-1,-1, 7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PC
+ {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PD
+ {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PE
+ {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PF
+ {-1,-1,-1,-1,-1,-1, 6, 7, 8, 9,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PG
+ {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PH
+ {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PI
+};
+// guenter ende
+
+
 static int version=0;
 static int pwmmode=0;
 
@@ -950,7 +1032,7 @@ int sunxi_get_gpio_mode(int pin)
 			regval = readl(phyaddr);
 			if (wiringPiDebug)
 				printf("read reg val: 0x%x offset:%d  return: %d\n",regval,offset,reval);
-			//reval=regval &(reval+(7 << offset));
+			// reval=regval &(reval+(7 << offset));
 			reval=(regval>>offset)&7;
 			if (wiringPiDebug)
 				printf("read reg val: 0x%x offset:%d  return: %d\n",regval,offset,reval);
@@ -1213,7 +1295,7 @@ int isA20(void)
   if (wiringPiDebug)
     printf ("piboardRev: Hardware string: %s\n", line) ;
 	
-	if (strstr(line,"sun7i") != NULL)
+	if (strstr(line,"sun7i") != NULL)			
 	{
 		if (wiringPiDebug)
 		printf ("Hardware:%s\n",line) ;
@@ -1228,6 +1310,50 @@ int isA20(void)
 }
 /*end 2014.09.18*/
 
+
+
+/*add for H3 guenter*/
+int isH3(void)
+{
+  FILE *cpuFd ;
+  char line [120] ;
+  char *d;
+	if ((cpuFd = fopen ("/proc/cpuinfo", "r")) == NULL)
+		piBoardRevOops ("Unable to open /proc/cpuinfo") ;
+	  while (fgets (line, 120, cpuFd) != NULL)
+		{
+			if (strncmp (line, "Hardware", 8) == 0)
+			break ;
+		}
+		
+	fclose (cpuFd) ;
+	if (strncmp (line, "Hardware", 8) != 0)
+		piBoardRevOops ("No \"Hardware\" line") ;
+	
+  for (d = &line [strlen (line) - 1] ; (*d == '\n') || (*d == '\r') ; --d)
+    *d = 0 ;
+  if (wiringPiDebug)
+    printf ("piboardRev: Hardware string: %s\n", line) ;
+	
+	if (strstr(line,"sun8i") != NULL)			//guenter von sun7i auf sun8i
+	{
+		if (wiringPiDebug)
+		printf ("Hardware:%s\n",line) ;
+		return 1 ;
+	}
+	else
+	{
+		if (wiringPiDebug)
+		printf ("Hardware:%s\n",line) ;
+		return 0 ;
+	}
+}
+/* guenter ende */
+
+
+
+
+
 int piBoardRev (void)
 {
   FILE *cpuFd ;
@@ -1235,8 +1361,8 @@ int piBoardRev (void)
   char *c ;
   static int  boardRev = -1 ;
 
-/*add for BananaPro by LeMaker team*/
-  if(isA20())
+/*add for orange pi guenter */
+  if(isH3())			//guenter if(isA20())
   {
 	version = BPRVER;
 		if (wiringPiDebug)

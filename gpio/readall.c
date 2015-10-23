@@ -80,7 +80,7 @@ static char *alts [] =
   "IN", "OUT", "ALT5", "ALT4", "ALT0", "ALT1", "ALT2", "ALT3"
 } ;
 
-static int physToWpi [64] = 
+/* guenter static int physToWpi [64] = 
 {
   -1,           // 0
   -1, -1,       // 1, 2
@@ -111,9 +111,40 @@ static int physToWpi [64] =
   -1, -1,
   -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1
-} ;
+} ; 
+guenter ende */
 
-static char *physNames [64] = 
+// guenter anfang
+static int physToWpi [64] =
+{
+  -1,          // 0
+  -1,     -1,     //1, 2
+   -1,    -1,     //3, 4
+   -1,    -1,     //5, 6
+   -1,    -1,   //7, 8
+  -1,     -1,   //9, 10
+  -1,   1,   //11, 12
+  -1,   -1,     //13, 14
+  -1,   4,   //15, 16
+  -1,     5,   //17, 18
+  -1,   -1,     //19, 20
+  -1,  -1,   //21, 22
+  -1,   -1,   //23, 24
+  -1,    -1,   //25, 26
+  -1,   -1,  //27, 28
+  7,    -1,    //29, 30
+  8,  9,   //31, 32      
+  10,   -1,      //33, 34
+  12,   13,    //35, 36
+  14,   15,     //37, 38
+  -1,   16,    //39, 40
+   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //41-> 55
+   -1, -1, -1, -1, -1, -1, -1, -1 // 56-> 63
+} ;
+//guenter ende
+
+
+/* guenter static char *physNames [64] = 
 {
   NULL,
 
@@ -145,7 +176,43 @@ static char *physNames [64] =
   "GPIO.17", "GPIO.18",
   "GPIO.19", "GPIO.20",
    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+} ;	guenter ende */
+
+//guenter orange pi
+static char *physNames [64] = 
+{
+  NULL,
+
+ "    3.3v", "5v      ",
+ "   SDA.0", "5V      ",
+ "   SCL.0", "0v      ",
+ "    ??  ", "TxD3    ",
+ "      0v", "RxD3    ",
+ "    RxD2", "IO1 PD14",
+ "    TxD2", "0v      ",
+ "    CTS2", "IO4 PC04",
+ "    3.3v", "IO5 PC07",
+ "    MOSI", "0v      ",
+ "    MISO", "RTS2    ",
+ "    SCLK", "SPI-CE0 ",
+ "      0v", "CE1     ",
+ "   SDA.1", "SCL.1   ",
+ " IO7 PA7", "0v      ",
+ " IO8 PA8", "IO9 PG08",
+ "IO10 PA9", "0v      ",
+ "IO12PA10", "IO13PG09",
+ "IO14PA20", "IO15PG06",
+ "      0v", "IO16PG07",
+       NULL, NULL,
+       NULL, NULL,
+       NULL, NULL,
+       NULL, NULL,
+       NULL, NULL,
+  "GPIO.17", "GPIO.18",
+  "GPIO.19", "GPIO.20",
+   NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
 } ;
+// guenter ende
 
 
 /*
@@ -313,6 +380,22 @@ void BPReadAll(void)
 }
 //end 2014.09.26
 
+//guenter 
+void OrangePiReadAll(void)
+{
+  int pin ;
+
+  printf (" +-----+-----+----------+------+---+--OrangePiPC--+---+------+---------+-----+--+\n") ;
+  printf (" | BCM | wPi |   Name   | Mode | V | Physical | V | Mode | Name     | wPi | BCM |\n") ;
+  printf (" +-----+-----+----------+------+---+----++----+---+------+----------+-----+-----+\n") ;
+  for (pin = 1 ; pin <= 40 ; pin += 2)
+    readallPhys (pin) ;
+  printf (" +-----+-----+----------+------+---+----++----+---+------+----------+-----+-----+\n") ;
+  printf (" | BCM | wPi |   Name   | Mode | V | Physical | V | Mode | Name     | wPi | BCM |\n") ;
+  printf (" +-----+-----+----------+------+---+--OrangePIPC--+------+----------+-----+-----+\n") ;	
+}
+//guenter ende
+
 void doReadall (void)
 {
   int model, rev, mem, maker, overVolted ;
@@ -332,7 +415,8 @@ void doReadall (void)
   else if (model == PI_MODEL_CM)
     cmReadall () ;
   else if (model == PI_MODEL_BPR) //add for BananaPro by lemaker team
-  	 BPReadAll();
+	 OrangePiReadAll();	//guenter 
+  	 // guenter BPReadAll();
   else
     printf ("Oops - unable to determine board type... model: %d\n", model) ;
 }
