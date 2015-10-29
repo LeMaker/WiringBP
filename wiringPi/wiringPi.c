@@ -654,7 +654,7 @@ static int pinToGpio_BP [64] =
   -1,110,
  -1,-1,
  68,71,
- -1,7,
+ 6,7,
  8,200,
  9,-1,
  10,201,
@@ -732,7 +732,7 @@ static int physToGpio_BP [64] =
   -1,     -1,     //1, 2
    -1,    -1,     //3, 4
    -1,    -1,     //5, 6
-   -1,    -1,   //7, 8
+    6,    -1,   //7, 8
   -1,     -1,   //9, 10
   -1,   110,   //11, 12
   -1,   -1,     //13, 14
@@ -872,7 +872,7 @@ static int BP_PIN_MASK[9][32] =  //[BANK]  [INDEX]
 // guenter anfang ... welche pins werden freigegeben .. -1 = gesperrt
 static int BP_PIN_MASK[9][32] =  //[BANK]  [INDEX]
 {
- {-1,-1,-1,-1,-1,-1,-1, 7, 8, 9,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PA
+ {-1,-1,-1,-1,-1,-1, 6, 7, 8, 9,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PA
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PB
  {-1,-1,-1,-1, 4,-1,-1, 7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PC
  {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,},//PD
@@ -1594,17 +1594,19 @@ int getAlt (int pin)
    /*add for BananaPro by LeMaker team*/
 	if(BPRVER == version)
 	{
+
+		//printf("[%s:L%d] the pin:%d  mode: %d is invaild,please check it over!\n", __func__,  __LINE__, pin, wiringPiMode);
 		if (wiringPiMode == WPI_MODE_PINS)
 			pin = pinToGpio_BP [pin] ;
 		else if (wiringPiMode == WPI_MODE_PHYS)
 			pin = physToGpio_BP[pin] ;
-		else if (wiringPiMode == WPI_MODE_GPIO)
+		else if (wiringPiMode == WPI_MODE_GPIO) 
 			pin=pinTobcm_BP[pin];//need map A20 to bcm
 		else return 0 ;
 
 		if(-1 == pin)
 		{
-			printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+			printf("[%s:L%d] the pin:%d  mode: %d is invaild,please check it over!\n", __func__,  __LINE__, pin, wiringPiMode);
 			return -1;
 		}
 		alt=sunxi_get_gpio_mode(pin);
@@ -2872,7 +2874,7 @@ int wiringPiSetup (void)
 
   boardRev = piBoardRev () ;
 	
-  if (BPRVER == boardRev)  /*modify for BananaPro by LeMaker team*/
+  if (BPRVER == boardRev)  /*modify for BananaPro by LeMaker team zhaolei*/
   {
   	 	pinToGpio =  pinToGpioR3 ;
 		physToGpio = physToGpioR3 ;
