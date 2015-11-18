@@ -1513,7 +1513,6 @@ void pinMode (int pin, int mode)
 {
   int    fSel, shift, alt ;
   struct wiringPiNodeStruct *node = wiringPiNodes ;
-  int origPin = pin ;
 	if(version==3)
 	{
 		if (wiringPiDebug)
