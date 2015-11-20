@@ -558,7 +558,7 @@ int wiringPiCodes = FALSE ;
 /*
 	map tableb for BP
 */
-static int upDnConvert[3] = {7, 7, 5};
+static int upDnConvert[3] = {0, 2, 1};
 
 static int pinToGpio_BP [64] =
 {
@@ -967,7 +967,7 @@ void sunxi_pullUpDnControl (int pin, int pud)
 	 int index = pin - (bank << 5);
 	 int sub = index >> 4;
 	 int sub_index = index - 16*sub;
-	 uint32_t phyaddr = SUNXI_GPIO_BASE + (bank * 36) + 0x1c + sub; // +0x10 -> pullUpDn reg
+	 uint32_t phyaddr = SUNXI_GPIO_BASE + (bank * 36) + 0x1c + 4*sub; // +0x10 -> pullUpDn reg
 	   if (wiringPiDebug)
 			printf("func:%s pin:%d,bank:%d index:%d sub:%d phyaddr:0x%x\n",__func__, pin,bank,index,sub,phyaddr); 
 	 if(BP_PIN_MASK[bank][index] != -1)
@@ -991,6 +991,7 @@ void sunxi_pullUpDnControl (int pin, int pud)
 	 delay (1) ;	
 	return ;
 }
+
 /*
  * wiringPiFailure:
  *	Fail. Or not.
@@ -1512,7 +1513,6 @@ void pinMode (int pin, int mode)
 {
   int    fSel, shift, alt ;
   struct wiringPiNodeStruct *node = wiringPiNodes ;
-  int origPin = pin ;
 	if(version==3)
 	{
 		if (wiringPiDebug)
@@ -1631,8 +1631,6 @@ void pullUpDnControl (int pin, int pud)
   struct wiringPiNodeStruct *node = wiringPiNodes ;
 	if(version==3)
 	{
-		pud = upDnConvert[pud];
-
 		if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
 		  {
 			   if (wiringPiMode == WPI_MODE_PINS)
@@ -1644,7 +1642,7 @@ void pullUpDnControl (int pin, int pud)
 				else return ;
 				if (wiringPiDebug)
 					printf ("%s,%d,pin:%d\n", __func__, __LINE__,pin) ;
-				pud &= 3 ;
+                pud = upDnConvert[pud]; // convert wiringpi pud to sunxi pud value
 				sunxi_pullUpDnControl(pin, pud);
 		  }
 		  else						// Extension module
