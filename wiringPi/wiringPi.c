@@ -1522,7 +1522,7 @@ void piBoardId (int *model, int *rev, int *mem, int *maker, int *overVolted)
 
 int wpiPinToGpio (int wpiPin)
 {
-  return pinToGpio [wpiPin & 63] ;
+  return pinToGpio_BP [wpiPin & 63] ;
 }
 
 
@@ -1535,7 +1535,7 @@ int wpiPinToGpio (int wpiPin)
 
 int physPinToGpio (int physPin)
 {
-  return physToGpio [physPin & 63] ;
+  return physToGpio_BP [physPin & 63] ;
 }
 
 /*
@@ -1858,7 +1858,7 @@ struct wiringPiNodeStruct *wiringPiNewNode (int pinBase, int numPins)
 
 void pinEnableED01Pi (int pin)
 {
-  pin = pinToGpio [pin & 63] ;
+  pin = pinToGpio_BP [pin & 63] ;
 }
 #endif
 
@@ -2559,9 +2559,9 @@ int waitForInterrupt (int pin, int mS)
   struct pollfd polls ;
 
   /**/ if (wiringPiMode == WPI_MODE_PINS)
-    pin = pinToGpio [pin] ;
+    pin = pinToGpio_BP [pin] ;
   else if (wiringPiMode == WPI_MODE_PHYS)
-    pin = physToGpio [pin] ;
+    pin = physToGpio_BP [pin] ;
 
   if ((fd = sysFds [pin]) == -1)
     return -2 ;
@@ -2634,9 +2634,9 @@ int wiringPiISR (int pin, int mode, void (*function)(void))
   /**/ if (wiringPiMode == WPI_MODE_UNINITIALISED)
     return wiringPiFailure (WPI_FATAL, "wiringPiISR: wiringPi has not been initialised. Unable to continue.\n") ;
   else if (wiringPiMode == WPI_MODE_PINS)
-    bcmGpioPin = pinToGpio [pin] ;
+    bcmGpioPin = pinToGpio_BP [pin] ;
   else if (wiringPiMode == WPI_MODE_PHYS)
-    bcmGpioPin = physToGpio [pin] ;
+    bcmGpioPin = physToGpio_BP [pin] ;
   else
     bcmGpioPin = pin ;
 
