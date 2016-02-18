@@ -297,7 +297,7 @@ int wiringPiReturnCodes = FALSE ;
 // sysFds:
 //	Map a file descriptor from the /sys/class/gpio/gpioX/value
 
-static int sysFds [64] =
+static int sysFds [300] =
 {
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -1044,6 +1044,7 @@ int sunxi_get_gpio_mode(int pin)
 		return reval;
 	 } 
 }
+
 void sunxi_set_gpio_mode(int pin,int mode)
 {
  uint32_t regval = 0;
@@ -1109,6 +1110,7 @@ void sunxi_set_gpio_mode(int pin,int mode)
 
 	return ;
 }
+
 void sunxi_digitalWrite(int pin, int value)
 { 
 	 uint32_t regval = 0;
@@ -1143,32 +1145,34 @@ void sunxi_digitalWrite(int pin, int value)
 	 {
 		printf("pin number error\n");
 	 }
-	 
+
 	 return ;
 }
+
 int sunxi_digitalRead(int pin)
-{ 
-	 uint32_t regval = 0;
-	 int bank = pin >> 5;
-	 int index = pin - (bank << 5);
-	 uint32_t phyaddr = SUNXI_GPIO_BASE + (bank * 36) + 0x10; // +0x10 -> data reg
-	   if (wiringPiDebug)
-			printf("func:%s pin:%d,bank:%d index:%d phyaddr:0x%x\n",__func__, pin,bank,index,phyaddr); 
-	 if(BP_PIN_MASK[bank][index] != -1)
-	 {
-	  regval = readl(phyaddr);
-	  regval = regval >> index;
-	  regval &= 1;
+{
+	uint32_t regval = 0;
+	int bank = pin >> 5;
+	int index = pin - (bank << 5);
+	uint32_t phyaddr = SUNXI_GPIO_BASE + (bank * 36) + 0x10; // +0x10 -> data reg
+	if (wiringPiDebug)
+			printf("func:%s pin:%d,bank:%d index:%d phyaddr:0x%x\n",__func__, pin,bank,index,phyaddr);
+	if(BP_PIN_MASK[bank][index] != -1)
+	{
+		regval = readl(phyaddr);
+		regval = regval >> index;
+		regval &= 1;
 		if (wiringPiDebug)
 			printf("***** read reg val: 0x%x,bank:%d,index:%d,line:%d\n",regval,bank,index,__LINE__);
-	  return regval;
-	 }
-	 else
-	 {
-	  printf("pin number error\n");
-	  return regval;
-	 } 
+	 	return regval;
+	}
+	else
+	{
+		printf("Sunxi_digitalRead() pin - number error\n");
+		return regval;
+	}
 }
+
 void sunxi_pullUpDnControl (int pin, int pud)
 {
 	 uint32_t regval = 0;
@@ -2117,15 +2121,15 @@ int digitalRead (int pin)
 {
   char c ;
   struct wiringPiNodeStruct *node = wiringPiNodes ;
-	
+
 	/*add for BananaPro by LeMaker team*/
 	if(BPRVER == version)
 	{
 		if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
 			  {
+				int _pinMode = getAlt(pin);
 				 if (wiringPiMode == WPI_MODE_GPIO_SYS)	// Sys mode
 				{
-					
 					if(pin==0)
 					{
 						//printf("%d %s,%d invalid pin,please check it over.\n",pin,__func__, __LINE__);
@@ -2136,17 +2140,17 @@ int digitalRead (int pin)
 						//printf("%d %s,%d invalid pin,please check it over.\n",pin,__func__, __LINE__);
 						return 0;
 					}
-					  if (sysFds [pin] == -1)
+					if (sysFds [pin] == -1)
 						{
 							if (wiringPiDebug)
 								printf ("pin %d sysFds -1.%s,%d\n", pin ,__func__, __LINE__) ;
-							return LOW ;
+							return LOW;
 						}
-						if (wiringPiDebug)
-								printf ("pin %d :%d.%s,%d\n", pin ,sysFds [pin],__func__, __LINE__) ;
-					  lseek  (sysFds [pin], 0L, SEEK_SET) ;
-					  read   (sysFds [pin], &c, 1) ;
-					  return (c == '0') ? LOW : HIGH ;
+					if (wiringPiDebug)
+						printf ("pin %d :%d.%s,%d\n", pin ,sysFds [pin],__func__, __LINE__) ;
+					lseek  (sysFds [pin], 0L, SEEK_SET) ;
+					read   (sysFds [pin], &c, 1) ;
+					return (c == '0') ? LOW : HIGH ;
 				}
 				else if (wiringPiMode == WPI_MODE_PINS)
 					pin = pinToGpio_BP [pin] ;
@@ -2154,11 +2158,36 @@ int digitalRead (int pin)
 					pin = physToGpio_BP[pin] ;
 				else if (wiringPiMode == WPI_MODE_GPIO)
 					pin=pinTobcm_BP[pin];//need map A20 to bcm
-				else 
+				else
 				  return LOW ;
-				 if(-1 == pin){
-					printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+				if(-1 == pin){
+					printf("[%s:L%d] the pin:%d is invalid, please check it over!\n", __func__,  __LINE__, pin);
 					return LOW;
+					}
+				if(_pinMode == 6){
+					// -- Allwinner H3 --
+					//ALT2, ie. EINT is enabled!
+					//Gotta export the pin if it's not exported already, then read its value that way
+					char fName[64];
+					struct stat s;
+					sprintf(fName, "/sys/class/gpio/gpio%d", pin);
+					if(stat(fName, &s) == -1) {
+						int tempFd = open("/sys/class/gpio/export", O_WRONLY);
+						if(tempFd < 0) return LOW;
+						sprintf(fName, "%d\n", pin);
+						write(tempFd, fName, strlen(fName));
+						close(tempFd);
+						}
+					sprintf(fName, "/sys/class/gpio/gpio%d/value", pin);
+					if(sysFds[pin] == -1){
+						if ((sysFds[pin] = open (fName, O_RDWR)) < 0){
+							printf("digitalRead(): Failed to open %s, pin not exported?\n", fName);
+							return LOW;
+							}
+						}
+					lseek(sysFds[pin], 0L, SEEK_SET);
+					read(sysFds[pin], &c, 1);
+					return (c == '0') ? LOW : HIGH;
 					}
 				return sunxi_digitalRead(pin);
 			  }
@@ -2170,7 +2199,7 @@ int digitalRead (int pin)
 		  }
 	  }
 	/*end 2014.08.19*/
-	
+
   if ((pin & PI_GPIO_MASK) == 0)		// On-Board Pin
   {
     /**/ if (wiringPiMode == WPI_MODE_GPIO_SYS)	// Sys mode
@@ -2644,12 +2673,12 @@ int wiringPiISR (int pin, int mode, void (*function)(void))
 	{
 		if(-1 == bcmGpioPin)  /**/
 		{
-			printf("[%s:L%d] the pin:%d is invaild,please check it over!\n", __func__,  __LINE__, pin);
+			printf("[%s:L%d] the pin:%d is invalid, please check it over!\n", __func__,  __LINE__, pin);
 			return -1;
 		}
 		
 		if(edge[bcmGpioPin]==-1)
-		return wiringPiFailure (WPI_FATAL, "wiringPiISR: pin not sunpprt on bananaPi (%d,%d)\n", pin,bcmGpioPin) ;
+		return wiringPiFailure (WPI_FATAL, "wiringPiISR: pin not supported on Banana Pi (%d,%d)\n", pin,bcmGpioPin) ;
 	}
 	/*end 2014.08.19*/
 	
@@ -2857,6 +2886,7 @@ int wiringPiSetup (void)
   int   fd ;
   int   boardRev ;
   int   model, rev, mem, maker, overVolted ;
+  memset(&sysFds, -1, sizeof(int)*300); // Initialize the filedescriptor - table all to -1
 
   if (getenv (ENV_DEBUG) != NULL)
     wiringPiDebug = TRUE ;
