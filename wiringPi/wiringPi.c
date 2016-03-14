@@ -2706,13 +2706,11 @@ int wiringPiISR (int pin, int mode, void (*function)(void))
     {
       /**/ if (access ("/usr/local/bin/gpio", X_OK) == 0)
       {
-	execl ("/usr/local/bin/gpio", "gpio", "edge", pinS, "none", (char *)NULL) ;
 	execl ("/usr/local/bin/gpio", "gpio", "edge", pinS, modeS, (char *)NULL) ;
 	return wiringPiFailure (WPI_FATAL, "wiringPiISR: execl failed: %s\n", strerror (errno)) ;
       }
       else if (access ("/usr/bin/gpio", X_OK) == 0)
       {
-	execl ("/usr/bin/gpio", "gpio", "edge", pinS, "none", (char *)NULL) ;
 	execl ("/usr/bin/gpio", "gpio", "edge", pinS, modeS, (char *)NULL) ;
 	return wiringPiFailure (WPI_FATAL, "wiringPiISR: execl failed: %s\n", strerror (errno)) ;
       }
