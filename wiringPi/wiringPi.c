@@ -677,6 +677,7 @@ static int pinToGpio_BP [64] =
 // guenter ... dieses braucht nicht umgewandelt werden, da kein /sys/class/gpio auf orange pi
 static int pinTobcm_BP [64] =
 {
+#if 0
  257,256,   //map to BCM GPIO0,1
  53,52,       //map to BCM GPIO2,3
  226,35,     //map to BCM GPIO4,5
@@ -691,6 +692,22 @@ static int pinTobcm_BP [64] =
  273,244,    //map to BCM GPIO22,23
  245,272,    //map to BCM GPIO24,25
  37, 274,     //map to BCM GPIO26,27
+#endif
+
+ -1, -1,
+ -1, -1,
+  6,  7,    //map to BCM GPIO4,5
+  8, -1,    //map to BCM GPIO6,7
+ -1, -1,
+ -1, -1,
+200,  9,    //map to BCM GPIO12,13
+ -1, -1,    //map to BCM GPIO14,15
+201, -1,    //map to BCM GPIO16,17
+110, 10,    //map to BCM GPIO18,19
+198,199,    //map to BCM GPIO20,21
+ -1, 68,    //map to BCM GPIO22,23
+ 71, -1,    //map to BCM GPIO24,25
+ 20, -1,    //map to BCM GPIO26,27
  
   -1,-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  // 29... 44
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, //45... 60
