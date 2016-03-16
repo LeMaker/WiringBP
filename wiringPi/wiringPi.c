@@ -2676,9 +2676,13 @@ int wiringPiISR (int pin, int mode, void (*function)(void))
 			printf("[%s:L%d] the pin:%d is invalid, please check it over!\n", __func__,  __LINE__, pin);
 			return -1;
 		}
-		
-		if(edge[bcmGpioPin]==-1)
-		return wiringPiFailure (WPI_FATAL, "wiringPiISR: pin not supported on Banana Pi (%d,%d)\n", pin,bcmGpioPin) ;
+		if(isH3()){
+			// All PA- and PG-pins support interrupts, the others don't
+			if(bcmGpioPin > 31 && bcmGpioPin < 192)
+				return wiringPiFailure (WPI_FATAL, "wiringPiISR: the specified pin does not support interrupts on this board (Allwinner H3) (%d,%d)\n", pin,bcmGpioPin) ;
+		}
+		else if(edge[bcmGpioPin]==-1)
+			return wiringPiFailure (WPI_FATAL, "wiringPiISR: pin not supported on Banana Pi (%d,%d)\n", pin,bcmGpioPin) ;
 	}
 	/*end 2014.08.19*/
 	
