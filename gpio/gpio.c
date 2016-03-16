@@ -597,6 +597,8 @@ void doEdge (int argc, char *argv [])
   }
 
   fprintf (fd, "none\n") ;
+  fclose (fd) ;
+  fd = fopen (fName, "w") ;
   fprintf (fd, "in\n") ;
   fclose (fd) ;
 
