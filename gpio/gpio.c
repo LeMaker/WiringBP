@@ -315,6 +315,7 @@ static void doI2Cdetect (int argc, char *argv [])
 		  return ;
 		}
 
+#if 0
 		if (!moduleLoaded ("i2c-sunxi"))
 		{
 		  fprintf (stderr, "%s: The I2C kernel module(s) are not loaded.\n", argv [0]) ;
@@ -322,6 +323,8 @@ static void doI2Cdetect (int argc, char *argv [])
 		}
 
 		sprintf (command, "%s -y %d", I2CDETECT, 2) ;
+#endif
+		sprintf (command, "%s -y %d", I2CDETECT, 0) ;
 		if (system (command) < 0)
 		  fprintf (stderr, "%s: Unable to run i2cdetect: %s\n", argv [0], strerror (errno)) ;
 	}
