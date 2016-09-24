@@ -72,6 +72,7 @@ $(STATIC):	$(OBJ)
 $(DYNAMIC):	$(OBJ)
 	@echo "[Link (Dynamic)]"
 	@$(CC) -shared -Wl,-soname,libwiringPi.so -o libwiringPi.so.$(VERSION) -lpthread $(OBJ)
+	@chmod -x $@
 
 .c.o:
 	@echo [Compile] $<
@@ -121,7 +122,7 @@ install-headers:
 install:	$(DYNAMIC) install-headers
 	@echo "[Install Dynamic Lib]"
 	@install -m 0755 -d						$(DESTDIR)$(PREFIX)/lib$(LIBARCH)
-	@install -m 0755 libwiringPi.so.$(VERSION)			$(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so.$(VERSION)
+	@install -m 0644 libwiringPi.so.$(VERSION)			$(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so.$(VERSION)
 	@ln -sfr $(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so.$(VERSION)	$(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so
 	-@ldconfig
 
