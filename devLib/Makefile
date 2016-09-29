@@ -60,6 +60,7 @@ $(STATIC):	$(OBJ)
 $(DYNAMIC):	$(OBJ)
 	@echo "[Link (Dynamic)]"
 	@$(CC) -shared -Wl,-soname,libwiringPiDev.so -o libwiringPiDev.so.$(VERSION) -lpthread $(OBJ)
+	@chmod -x $@
 
 .c.o:
 	@echo [Compile] $<
@@ -93,7 +94,7 @@ install-headers:
 install:	$(DYNAMIC) install-headers
 	@echo "[Install Dynamic Lib]"
 	@install -m 0755 -d						$(DESTDIR)$(PREFIX)/lib
-	@install -m 0755 libwiringPiDev.so.$(VERSION)			$(DESTDIR)$(PREFIX)/lib/libwiringPiDev.so.$(VERSION)
+	@install -m 0644 libwiringPiDev.so.$(VERSION)			$(DESTDIR)$(PREFIX)/lib/libwiringPiDev.so.$(VERSION)
 	@ln -sf $(DESTDIR)$(PREFIX)/lib/libwiringPiDev.so.$(VERSION)	$(DESTDIR)/lib/libwiringPiDev.so
 	@ldconfig
 
@@ -101,7 +102,7 @@ install:	$(DYNAMIC) install-headers
 install-static:	$(STATIC) install-headers
 	@echo "[Install Static Lib]"
 	@install -m 0755 -d			$(DESTDIR)$(PREFIX)/lib
-	@install -m 0755 libwiringPiDev.a	$(DESTDIR)$(PREFIX)/lib
+	@install -m 0644 libwiringPiDev.a	$(DESTDIR)$(PREFIX)/lib
 
 .PHONEY:	uninstall
 uninstall:

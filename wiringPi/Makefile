@@ -130,7 +130,7 @@ install:	$(DYNAMIC) install-headers
 install-static:	$(STATIC) install-headers
 	@echo "[Install Static Lib]"
 	@install -m 0755 -d			$(DESTDIR)$(PREFIX)/lib
-	@install -m 0755 libwiringPi.a		$(DESTDIR)$(PREFIX)/lib
+	@install -m 0644 libwiringPi.a		$(DESTDIR)$(PREFIX)/lib
 
 .PHONEY:	uninstall
 uninstall:
