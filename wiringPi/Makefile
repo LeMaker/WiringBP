@@ -129,8 +129,8 @@ install:	$(DYNAMIC) install-headers
 .PHONEY:	install-static
 install-static:	$(STATIC) install-headers
 	@echo "[Install Static Lib]"
-	@install -m 0755 -d			$(DESTDIR)$(PREFIX)/lib
-	@install -m 0644 libwiringPi.a		$(DESTDIR)$(PREFIX)/lib
+	@install -m 0755 -d			$(DESTDIR)$(PREFIX)/lib$(LIBARCH)
+	@install -m 0644 libwiringPi.a		$(DESTDIR)$(PREFIX)/lib$(LIBARCH)
 
 .PHONEY:	uninstall
 uninstall:
@@ -159,7 +159,7 @@ uninstall:
 	@rm -f $(DESTDIR)$(PREFIX)/include/pcf8574.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/pcf8591.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/sn3218.h
-	@rm -f $(DESTDIR)$(PREFIX)/lib/libwiringPi.*
+	@rm -f $(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.*
 	@ldconfig
 
 
