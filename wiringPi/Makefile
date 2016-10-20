@@ -26,17 +26,17 @@ DYN_VERS_MIN=0
 
 VERSION=$(DYN_VERS_MAJ).$(DYN_VERS_MIN)
 DESTDIR=/usr
-PREFIX=/local
+PREFIX?=/local
 
 STATIC=libwiringPi.a
 DYNAMIC=libwiringPi.so.$(VERSION)
 
 #DEBUG	= -g -O0
 DEBUG	= -O2
-CC	= gcc
+CC	?= gcc
 INCLUDE	= -I.
 DEFS	= -D_GNU_SOURCE
-CFLAGS	= $(DEBUG) $(DEFS) -Wformat=2 -Wall -Winline $(INCLUDE) -pipe -fPIC
+CFLAGS	+= $(DEBUG) $(DEFS) -Wformat=2 -Wall -Winline $(INCLUDE) -pipe -fPIC
 
 LIBS    =
 
@@ -72,6 +72,7 @@ $(STATIC):	$(OBJ)
 $(DYNAMIC):	$(OBJ)
 	@echo "[Link (Dynamic)]"
 	@$(CC) -shared -Wl,-soname,libwiringPi.so -o libwiringPi.so.$(VERSION) -lpthread $(OBJ)
+	@chmod -x $@
 
 .c.o:
 	@echo [Compile] $<
@@ -120,16 +121,16 @@ install-headers:
 .PHONEY:	install
 install:	$(DYNAMIC) install-headers
 	@echo "[Install Dynamic Lib]"
-	@install -m 0755 -d						$(DESTDIR)$(PREFIX)/lib
-	@install -m 0755 libwiringPi.so.$(VERSION)			$(DESTDIR)$(PREFIX)/lib/libwiringPi.so.$(VERSION)
-	@ln -sf $(DESTDIR)$(PREFIX)/lib/libwiringPi.so.$(VERSION)	$(DESTDIR)/lib/libwiringPi.so
-	@ldconfig
+	@install -m 0755 -d						$(DESTDIR)$(PREFIX)/lib$(LIBARCH)
+	@install -m 0644 libwiringPi.so.$(VERSION)			$(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so.$(VERSION)
+	@ln -sfr $(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so.$(VERSION)	$(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.so
+	-@ldconfig
 
 .PHONEY:	install-static
 install-static:	$(STATIC) install-headers
 	@echo "[Install Static Lib]"
-	@install -m 0755 -d			$(DESTDIR)$(PREFIX)/lib
-	@install -m 0755 libwiringPi.a		$(DESTDIR)$(PREFIX)/lib
+	@install -m 0755 -d			$(DESTDIR)$(PREFIX)/lib$(LIBARCH)
+	@install -m 0644 libwiringPi.a		$(DESTDIR)$(PREFIX)/lib$(LIBARCH)
 
 .PHONEY:	uninstall
 uninstall:
@@ -158,7 +159,7 @@ uninstall:
 	@rm -f $(DESTDIR)$(PREFIX)/include/pcf8574.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/pcf8591.h
 	@rm -f $(DESTDIR)$(PREFIX)/include/sn3218.h
-	@rm -f $(DESTDIR)$(PREFIX)/lib/libwiringPi.*
+	@rm -f $(DESTDIR)$(PREFIX)/lib$(LIBARCH)/libwiringPi.*
 	@ldconfig
 
 

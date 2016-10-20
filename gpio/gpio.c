@@ -599,6 +599,9 @@ void doEdge (int argc, char *argv [])
     exit (1) ;
   }
 
+  fprintf (fd, "none\n") ;
+  fclose (fd) ;
+  fd = fopen (fName, "w") ;
   fprintf (fd, "in\n") ;
   fclose (fd) ;
 
@@ -609,6 +612,10 @@ void doEdge (int argc, char *argv [])
     exit (1) ;
   }
 
+  // Always reset mode to "none" before setting a new mode
+  fprintf (fd, "none\n") ;
+  fclose (fd) ;
+  fd = fopen (fName, "w") ;
   /**/ if (strcasecmp (mode, "none")    == 0) fprintf (fd, "none\n") ;
   else if (strcasecmp (mode, "rising")  == 0) fprintf (fd, "rising\n") ;
   else if (strcasecmp (mode, "falling") == 0) fprintf (fd, "falling\n") ;
